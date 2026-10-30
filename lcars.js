@@ -1,0 +1,437 @@
+// lcars: workspace cards with name, folder and branch, the live agent's
+// status and last message, and a minimap row with one tile per terminal.
+// Click a card to select the workspace, a tile to focus that terminal, and
+// drag cards to reorder.
+//
+// https://github.com/blaisethompson/lcars
+//
+// Open as a pane:      cmux sidebar open lcars
+// Use as left sidebar: cmux sidebar select lcars
+
+const PALETTE = [
+  "#0A84FF", "#30D158", "#FF9F0A", "#BF5AF2", "#FF375F",
+  "#64D2FF", "#FFD60A", "#5E5CE6", "#AC8E68", "#66D4CF",
+];
+
+const STATUS = {
+  needs_input: { label: "Needs input", color: "#FF9F0A", rank: 3 },
+  working: { label: "Working", color: "#0A84FF", rank: 2 },
+  idle: { label: "Idle", color: "#34C759", rank: 1 },
+};
+
+const MAX_TILES = 3;
+
+const epoch = () => data.clock()?.epoch ?? 0;
+const findWorkspace = (id) => (data.workspaces() ?? []).find((x) => x.id === id);
+
+// Renders `view(value)` only while `value()` is truthy.
+function when(value, key, view) {
+  return ForEach(
+    { items: () => (value() ? [value()] : []), key: () => key },
+    (v) => view(v)
+  );
+}
+
+function basename(path) {
+  if (!path) return "";
+  const parts = path.replace(/\/+$/, "").split("/");
+  return parts[parts.length - 1] || path;
+}
+
+function hashColor(key) {
+  let h = 0;
+  for (let i = 0; i < key.length; i += 1) h = (h * 31 + key.charCodeAt(i)) | 0;
+  return PALETTE[Math.abs(h) % PALETTE.length];
+}
+
+function accent(w) {
+  if (!w) return "#7f7f7f";
+  return w.color || hashColor(basename(w.directory) || w.title || w.id);
+}
+
+function elapsed(since) {
+  const s = Math.max(0, Math.floor(epoch() - since));
+  if (s < 60) return s + "s";
+  const m = Math.floor(s / 60);
+  if (m < 60) return m + "m";
+  const h = Math.floor(m / 60);
+  return h < 24 ? h + "h" : Math.floor(h / 24) + "d";
+}
+
+function liveAgents(w) {
+  return (w?.agents ?? []).filter((a) => STATUS[a.status]);
+}
+
+function topAgent(w) {
+  let best = null;
+  for (const a of liveAgents(w)) {
+    if (!best || STATUS[a.status].rank > STATUS[best.status].rank) best = a;
+  }
+  return best;
+}
+
+function agentForTab(w, tab) {
+  const live = liveAgents(w).filter((a) => a.panelId === tab?.id);
+  live.sort((a, b) => STATUS[b.status].rank - STATUS[a.status].rank);
+  return live[0] ?? null;
+}
+
+function statusLine(w) {
+  const a = topAgent(w);
+  if (!a) return null;
+  const meta = STATUS[a.status];
+  const since = a.status === "idle" ? null : a.sinceEpoch;
+  return {
+    color: meta.color,
+    text: meta.label + (since ? " · " + elapsed(since) : ""),
+    who: a.name || a.kind || "",
+  };
+}
+
+// One entry per live agent session, labelled by the terminal it runs in.
+// OpenCode reports a session per tab without tab names, so tabs sharing a
+// terminal are numbered in a stable order.
+function sessions(w) {
+  const live = liveAgents(w).slice().sort((a, b) => (a.id < b.id ? -1 : 1));
+  const tabs = w?.tabs ?? [];
+  const perPanel = new Map();
+  for (const a of live) perPanel.set(a.panelId, (perPanel.get(a.panelId) ?? 0) + 1);
+  const seen = new Map();
+  return live.map((a) => {
+    const tab = tabs.find((t) => t.id === a.panelId);
+    const n = (seen.get(a.panelId) ?? 0) + 1;
+    seen.set(a.panelId, n);
+    const where = tab ? tabLabel(w, tab) : (a.name || a.kind || "agent");
+    const terminals = new Set(live.map((x) => x.panelId)).size;
+    let label = where;
+    if (a.title) label = a.title;
+    else if (perPanel.get(a.panelId) > 1) label = terminals > 1 ? "Tab " + n + " · " + where : "Tab " + n;
+    return { key: a.id, agent: a, label };
+  });
+}
+
+function sessionAge(a) {
+  if (a.status !== "idle" && a.sinceEpoch) return elapsed(a.sinceEpoch);
+  return a.lastActivityAt ? elapsed(a.lastActivityAt) : "";
+}
+
+function sessionRow(w, s) {
+  const meta = () => STATUS[s().agent.status];
+  return HStack({ spacing: 6 }, [
+    Circle({ size: 6 }).fill(() => meta().color),
+    Text(() => s().label)
+      .font(11).color("secondary")
+      .lineLimit(1).truncation("tail"),
+    Spacer({ minLength: 4 }),
+    Text(() => meta().label).font(10).color(() => meta().color).fixedSize(),
+    Text(() => sessionAge(s().agent))
+      .font(10).monospaced().color("tertiary").fixedSize(),
+  ])
+    .paddingHorizontal(4)
+    .paddingVertical(2)
+    .cornerRadius(4)
+    .hoverBackground("#FFFFFF0F")
+    .cursor("pointer")
+    .onTap(() => {
+      const sid = s().agent.surfaceId;
+      if (sid) cmux("surface.focus", { surface_id: sid, workspace_id: w().id });
+      else cmux("workspace.select", { workspace_id: w().id });
+    });
+}
+
+function cleanMessage(text) {
+  if (!text) return "";
+  const t = String(text).trim();
+  if (!t || t.startsWith("<")) return "";
+  return t.replace(/\s+/g, " ");
+}
+
+function tabLabel(w, t) {
+  const title = (t?.title ?? "").trim();
+  if (!title) return "terminal";
+  if (title.startsWith("~/") || title.startsWith("/")) return basename(title);
+  return title;
+}
+
+function tile(w, t) {
+  const agent = () => agentForTab(w(), t());
+  const focused = () => !!t()?.focused;
+  const live = () => focused() && !!w()?.selected;
+  return HStack({ spacing: 4 }, [
+    Circle({ size: 5 })
+      .fill(() => (agent() ? STATUS[agent().status].color : accent(w()) + "80")),
+    Text(() => tabLabel(w(), t()))
+      .font(10)
+      .lineLimit(1)
+      .truncation("tail")
+      .color(() => (live() ? "primary" : "secondary")),
+    Spacer({ minLength: 0 }),
+    Circle({ size: 5 }).fill(() => (t()?.hasUnread ? "#FF453A" : "clear")),
+  ])
+    .paddingHorizontal(6)
+    .frame({ maxWidth: "infinity", height: 22 })
+    .background(() => accent(w()) + (live() ? "40" : focused() ? "26" : "14"))
+    .borderColor(() => accent(w()) + (live() ? "B3" : "33"))
+    .borderWidth(1)
+    .cornerRadius(5)
+    .hoverBackground(() => accent(w()) + "4D")
+    .cursor("pointer")
+    .onTap(() => {
+      const sid = t()?.surfaceId;
+      if (sid) cmux("surface.focus", { surface_id: sid, workspace_id: w().id });
+      else cmux("workspace.select", { workspace_id: w().id });
+    });
+}
+
+function card(w) {
+  const selected = () => !!w()?.selected;
+  const folder = () => basename(w()?.directory);
+  const branch = () => (w()?.branch ? w().branch : "");
+  const message = () => cleanMessage(w()?.latestMessage);
+  const extra = () => Math.max(0, (w()?.tabs?.length ?? 0) - MAX_TILES);
+
+  const body = VStack({ spacing: 5 }, [
+    // Title row: name, then pin / unread badge.
+    HStack({ spacing: 6 }, [
+      Text(() => w()?.title ?? "")
+        .font(13).weight("semibold")
+        .lineLimit(1).truncation("tail").marquee()
+        .color(() => (selected() ? "primary" : "#FFFFFFD9")),
+      Spacer({ minLength: 0 }),
+      Image("pin.fill")
+        .font(9).color("tertiary")
+        .opacity(() => (w()?.pinned ? 1 : 0)),
+      Text(() => (w()?.unread > 0 ? String(w().unread) : ""))
+        .font(10).weight("semibold").monospaced().color("white")
+        .paddingHorizontal(() => (w()?.unread > 0 ? 5 : 0))
+        .paddingVertical(() => (w()?.unread > 0 ? 1 : 0))
+        .background(() => (w()?.unread > 0 ? "#FF453A" : null))
+        .cornerRadius(7)
+        .fixedSize()
+        .layoutPriority(2),
+    ]),
+
+    // Folder and branch.
+    HStack({ spacing: 4 }, [
+      Image("folder").font(9).color("tertiary"),
+      Text(folder).font(11).color("secondary").lineLimit(1).truncation("tail"),
+      Image("arrow.triangle.branch").font(9).color("tertiary")
+        .opacity(() => (branch() ? 1 : 0)),
+      Text(branch).font(11).monospaced().color("#66D4CF")
+        .lineLimit(1).truncation("middle"),
+      Circle({ size: 5 }).fill(() => (branch() && w()?.dirty ? "#FFD60A" : "clear")),
+      Spacer({ minLength: 0 }),
+    ]),
+
+    // Several live sessions: one line each.
+    VStack({ spacing: 1 }, [
+      ForEach(
+        { items: () => { const s = sessions(w()); return s.length > 1 ? s : []; }, key: (s) => s.key },
+        (s) => sessionRow(w, s)
+      ),
+    ]),
+
+    // A single live session: one status line.
+    when(() => (sessions(w()).length === 1 ? statusLine(w()) : null), "status", (s) =>
+      HStack({ spacing: 5 }, [
+        Circle({ size: 6 }).fill(() => s().color),
+        Text(() => s().text).font(11).weight("medium").color(() => s().color)
+          .lineLimit(1).fixedSize().layoutPriority(2),
+        Text(() => s().who).font(11).color("tertiary").lineLimit(1).truncation("tail"),
+        Spacer({ minLength: 0 }),
+      ])
+    ),
+
+    // Last agent message.
+    when(message, "message", (m) =>
+      HStack({ spacing: 0 }, [
+        Text(() => m()).font(11).color("secondary").lineLimit(2).truncation("tail"),
+        Spacer({ minLength: 0 }),
+      ])
+    ),
+
+    // Minimap: one tile per terminal.
+    HStack({ spacing: 4 }, [
+      ForEach(
+        { items: () => (w()?.tabs ?? []).slice(0, MAX_TILES), key: (t) => t.id },
+        (t) => tile(w, t)
+      ),
+      when(() => (extra() > 0 ? "+" + extra() : ""), "extra", (n) =>
+        Text(() => n()).font(10).monospaced().color("tertiary").fixedSize()
+      ),
+    ]),
+  ])
+    .paddingVertical(8)
+    .paddingLeading(8)
+    .paddingTrailing(6)
+    .frame({ maxWidth: "infinity" });
+
+  return HStack({ spacing: 0 }, [
+    RoundedRectangle({ cornerRadius: 2 })
+      .fill(() => accent(w()) + (selected() ? "FF" : "8C"))
+      .frame({ width: 3 })
+      .paddingVertical(8),
+    body,
+  ])
+    .paddingLeading(6)
+    .cornerRadius(8)
+    .background(() => (selected() ? "#FFFFFF14" : null))
+    .hoverBackground(() => (selected() ? "#FFFFFF14" : "#FFFFFF0A"))
+    .frame({ maxWidth: "infinity" })
+    .onTap(() => cmux("workspace.select", { workspace_id: w().id }))
+    .contextMenu(cardMenu(w));
+}
+
+function cardMenu(w) {
+  return [
+    Button(() => (w()?.pinned ? "Unpin" : "Pin"), () =>
+      cmux("workspace.action", { action: w()?.pinned ? "unpin" : "pin", workspace_id: w().id })),
+    Button(() => (w()?.unread > 0 ? "Mark as Read" : "Mark as Unread"), () =>
+      cmux("workspace.action", { action: w()?.unread > 0 ? "mark_read" : "mark_unread", workspace_id: w().id })),
+    Button("Move to Top", () =>
+      cmux("workspace.action", { action: "move_top", workspace_id: w().id })),
+    Divider(),
+    Button("Close", () => cmux("workspace.close", { workspace_id: w().id })).destructive(),
+  ];
+}
+
+// Compact minimap: a small square per terminal, filled with its agent's
+// status colour or the workspace tint.
+function miniTile(w, t) {
+  const agent = () => agentForTab(w(), t());
+  const live = () => !!t()?.focused && !!w()?.selected;
+  return RoundedRectangle({ cornerRadius: 2 })
+    .fill(() => (agent() ? STATUS[agent().status].color : accent(w()) + (live() ? "B3" : "59")))
+    .frame({ width: 10, height: 10 })
+    .borderColor(() => (live() ? "#FFFFFFCC" : t()?.hasUnread ? "#FF453A" : "clear"))
+    .borderWidth(1)
+    .cornerRadius(2)
+    .cursor("pointer")
+    .onTap(() => {
+      const sid = t()?.surfaceId;
+      if (sid) cmux("surface.focus", { surface_id: sid, workspace_id: w().id });
+      else cmux("workspace.select", { workspace_id: w().id });
+    });
+}
+
+function compactCard(w) {
+  const selected = () => !!w()?.selected;
+  const status = () => topAgent(w());
+  const subtitle = () => {
+    const folder = basename(w()?.directory);
+    return w()?.branch ? folder + " · " + w().branch : folder;
+  };
+
+  return HStack({ spacing: 8 }, [
+    RoundedRectangle({ cornerRadius: 2 })
+      .fill(() => accent(w()) + (selected() ? "FF" : "8C"))
+      .frame({ width: 3, height: 26 }),
+    VStack({ spacing: 2 }, [
+      HStack({ spacing: 5 }, [
+        Text(() => w()?.title ?? "")
+          .font(12).weight("semibold")
+          .lineLimit(1).truncation("tail").marquee()
+          .color(() => (selected() ? "primary" : "#FFFFFFD9")),
+        Spacer({ minLength: 0 }),
+        Image("pin.fill")
+          .font(8).color("tertiary")
+          .opacity(() => (w()?.pinned ? 1 : 0)),
+        Text(() => (w()?.unread > 0 ? String(w().unread) : ""))
+          .font(9).weight("semibold").monospaced().color("white")
+          .paddingHorizontal(() => (w()?.unread > 0 ? 4 : 0))
+          .background(() => (w()?.unread > 0 ? "#FF453A" : null))
+          .cornerRadius(6)
+          .fixedSize()
+          .layoutPriority(2),
+      ]),
+      HStack({ spacing: 4 }, [
+        when(status, "dot", (a) =>
+          Circle({ size: 6 }).fill(() => STATUS[a().status].color)
+        ),
+        Text(subtitle)
+          .font(10).color("secondary")
+          .lineLimit(1).truncation("middle"),
+        Spacer({ minLength: 4 }),
+        HStack({ spacing: 3 }, [
+          ForEach(
+            { items: () => (w()?.tabs ?? []).slice(0, 8), key: (t) => t.id },
+            (t) => miniTile(w, t)
+          ),
+        ]).fixedSize().layoutPriority(2),
+      ]),
+    ]),
+  ])
+    .paddingVertical(5)
+    .paddingHorizontal(6)
+    .cornerRadius(7)
+    .background(() => (selected() ? "#FFFFFF14" : null))
+    .hoverBackground(() => (selected() ? "#FFFFFF14" : "#FFFFFF0A"))
+    .frame({ maxWidth: "infinity" })
+    .onTap(() => cmux("workspace.select", { workspace_id: w().id }))
+    .contextMenu(cardMenu(w));
+}
+
+// "auto" expands the selected workspace and any that want attention.
+const MODES = [
+  { id: "auto", label: "Auto", icon: "sparkles" },
+  { id: "compact", label: "Compact", icon: "list.bullet" },
+  { id: "full", label: "Full", icon: "rectangle.grid.1x2" },
+];
+const [modeIndex, setModeIndex] = signal(0);
+const mode = () => MODES[modeIndex()];
+
+function wantsAttention(w) {
+  if (!w) return false;
+  if (w.unread > 0) return true;
+  return liveAgents(w).some((a) => a.status === "needs_input");
+}
+
+function expanded(w) {
+  const m = mode().id;
+  if (m === "full") return true;
+  if (m === "compact") return false;
+  return !!w?.selected || wantsAttention(w);
+}
+
+function header() {
+  return HStack({ spacing: 6 }, [
+    Text("Workspaces").font(11).weight("semibold").color("tertiary").lineLimit(1).fixedSize(),
+    Text(() => String((data.workspaces() ?? []).length))
+      .font(10).monospaced().color("tertiary"),
+    Spacer(),
+    HStack({ spacing: 4 }, [
+      Image(() => mode().icon).font(10).color("secondary"),
+      Text(() => mode().label).font(10).color("secondary"),
+    ])
+      .paddingHorizontal(6)
+      .paddingVertical(3)
+      .cornerRadius(5)
+      .hoverBackground("#FFFFFF14")
+      .cursor("pointer")
+      .onTap(() => setModeIndex((modeIndex() + 1) % MODES.length)),
+  ]).paddingHorizontal(6).paddingVertical(2);
+}
+
+sidebar(() =>
+  VStack({ spacing: 4 }, [
+    header(),
+    Reorderable(
+      {
+        items: () => data.workspaces() ?? [],
+        key: (w) => w.id,
+        spacing: 2,
+        onMove: (id, index) => cmux("workspace.reorder", { workspace_id: id, index: index }),
+      },
+      (item) => {
+        const id = item().id;
+        const w = () => findWorkspace(id) ?? item();
+        return VStack({ spacing: 0 }, [
+          when(() => !expanded(w()), "compact", () => compactCard(w)),
+          when(() => expanded(w()), "full", () => card(w)),
+        ]);
+      }
+    ),
+    Spacer(),
+  ]).padding(6),
+  { surface: "glass" }
+)
