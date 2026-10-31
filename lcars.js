@@ -104,6 +104,20 @@ function hashColor(key) {
   return PALETTE[Math.abs(h) % PALETTE.length];
 }
 
+// Black or white, whichever reads better on `hex`: workspace colours set
+// in cmux can be dark, unlike the LCARS ones.
+function inkOn(hex) {
+  let h = /^#([0-9a-f]{3,8})$/i.exec(hex ?? "")?.[1] ?? "";
+  if (h.length === 3) h = h.replace(/./g, "$&$&");
+  if (h.length < 6) return "black";
+  const lum = [0, 2, 4].map((i) => {
+    const c = parseInt(h.slice(i, i + 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  });
+  const l = 0.2126 * lum[0] + 0.7152 * lum[1] + 0.0722 * lum[2];
+  return (l + 0.05) / 0.05 >= 1.05 / (l + 0.05) ? "black" : "white";
+}
+
 function accent(w) {
   if (!w) return "#7f7f7f";
   return w.color || hashColor(w.id);
@@ -313,6 +327,27 @@ function shortcutHint(w, size) {
     .lineLimit(1).fixedSize().layoutPriority(2);
 }
 
+// A workspace's colour stripe, and the gap from it to the text.
+const STRIPE = 6;
+const ELBOW_INSET = STRIPE + 8;
+
+// The workspace name, laid over the top of the stripe. When selected the
+// stripe turns right behind it, an LCARS elbow, with the name in black (or
+// white on a dark colour); the lettering stays in line with the rows below
+// either way.
+function elbowTitle(w, size, pad) {
+  const selected = () => !!w()?.selected;
+  return Text(() => workspaceTitle(w()))
+    .font(size).weight("bold")
+    .lineLimit(1).truncation("tail").marquee()
+    .color(() => (selected() ? inkOn(accent(w())) : "#FFFFFFD9"))
+    .paddingLeading(ELBOW_INSET)
+    .paddingTrailing(() => (selected() ? 7 : 0))
+    .paddingVertical(pad)
+    .background(() => (selected() ? accent(w()) : null))
+    .cornerRadius(5);
+}
+
 function card(w) {
   const selected = () => !!w()?.selected;
   const folder = () => basename(w()?.directory);
@@ -323,10 +358,7 @@ function card(w) {
   const body = VStack({ spacing: 5 }, [
     // Title row: name, then pin / unread badge.
     HStack({ spacing: 6 }, [
-      Text(() => workspaceTitle(w()))
-        .font(16).weight("bold")
-        .lineLimit(1).truncation("tail").marquee()
-        .color(() => (selected() ? "primary" : "#FFFFFFD9")),
+      elbowTitle(w, 16, 2),
       Spacer({ minLength: 0 }),
       Image("pin.fill")
         .font(9).color("tertiary")
@@ -334,73 +366,74 @@ function card(w) {
       unreadBlock(w, 10),
       shortcutHint(w, 10),
     ]),
-
-    // Folder and branch.
-    HStack({ spacing: 4 }, [
-      Image("folder").font(9).color("tertiary"),
-      Text(folder).font(11).color("secondary").lineLimit(1).truncation("tail"),
-      Image("arrow.triangle.branch").font(9).color("tertiary")
-        .opacity(() => (branch() ? 1 : 0)),
-      Text(branch).font(11).monospaced().color(LCARS.periwinkle)
-        .lineLimit(1).truncation("middle"),
-      Circle({ size: 5 }).fill(() => (branch() && w()?.dirty ? LCARS.gold : "clear")),
-      Spacer({ minLength: 0 }),
-    ]),
-
-    // Several live sessions: one line each.
-    VStack({ spacing: 1 }, [
-      ForEach(
-        { items: () => { const s = sessions(w()); return s.length > 1 ? s : []; }, key: (s) => s.key },
-        (s) => sessionRow(w, s)
-      ),
-    ]),
-
-    // A single live session: one status line.
-    when(() => (sessions(w()).length === 1 ? statusLine(w()) : null), "status", (s) =>
-      HStack({ spacing: 5 }, [
-        Circle({ size: 6 }).fill(() => s().color),
-        Text(() => s().text).font(11).weight("medium").color(() => s().color)
-          .lineLimit(1).fixedSize().layoutPriority(2),
-        Text(() => s().who).font(11).color("tertiary").lineLimit(1).truncation("tail"),
+    VStack({ spacing: 5 }, [
+      // Folder and branch.
+      HStack({ spacing: 4 }, [
+        Image("folder").font(9).color("tertiary"),
+        Text(folder).font(11).color("secondary").lineLimit(1).truncation("tail"),
+        Image("arrow.triangle.branch").font(9).color("tertiary")
+          .opacity(() => (branch() ? 1 : 0)),
+        Text(branch).font(11).monospaced().color(LCARS.periwinkle)
+          .lineLimit(1).truncation("middle"),
+        Circle({ size: 5 }).fill(() => (branch() && w()?.dirty ? LCARS.gold : "clear")),
         Spacer({ minLength: 0 }),
-      ])
-    ),
+      ]),
 
-    // Last agent message.
-    when(message, "message", (m) =>
-      HStack({ spacing: 0 }, [
-        Text(() => m()).font(11).color("secondary").lineLimit(2).truncation("tail"),
-        Spacer({ minLength: 0 }),
-      ])
-    ),
+      // Several live sessions: one line each.
+      VStack({ spacing: 1 }, [
+        ForEach(
+          { items: () => { const s = sessions(w()); return s.length > 1 ? s : []; }, key: (s) => s.key },
+          (s) => sessionRow(w, s)
+        ),
+      ]),
 
-    // Minimap: one tile per terminal.
-    HStack({ spacing: 4 }, [
-      ForEach(
-        { items: () => (w()?.tabs ?? []).slice(0, MAX_TILES), key: (t) => t.id },
-        (t) => tile(w, t)
+      // A single live session: one status line.
+      when(() => (sessions(w()).length === 1 ? statusLine(w()) : null), "status", (s) =>
+        HStack({ spacing: 5 }, [
+          Circle({ size: 6 }).fill(() => s().color),
+          Text(() => s().text).font(11).weight("medium").color(() => s().color)
+            .lineLimit(1).fixedSize().layoutPriority(2),
+          Text(() => s().who).font(11).color("tertiary").lineLimit(1).truncation("tail"),
+          Spacer({ minLength: 0 }),
+        ])
       ),
-      when(() => (extra() > 0 ? "+" + extra() : ""), "extra", (n) =>
-        Text(() => n()).font(10).monospaced().color("tertiary").fixedSize()
+
+      // Last agent message.
+      when(message, "message", (m) =>
+        HStack({ spacing: 0 }, [
+          Text(() => m()).font(11).color("secondary").lineLimit(2).truncation("tail"),
+          Spacer({ minLength: 0 }),
+        ])
       ),
-    ]),
+
+      // Minimap: one tile per terminal.
+      HStack({ spacing: 4 }, [
+        ForEach(
+          { items: () => (w()?.tabs ?? []).slice(0, MAX_TILES), key: (t) => t.id },
+          (t) => tile(w, t)
+        ),
+        when(() => (extra() > 0 ? "+" + extra() : ""), "extra", (n) =>
+          Text(() => n()).font(10).monospaced().color("tertiary").fixedSize()
+        ),
+      ]),
+    ]).paddingLeading(ELBOW_INSET),
   ])
     .paddingVertical(8)
-    .paddingLeading(8)
     .paddingTrailing(6)
     .frame({ maxWidth: "infinity" });
 
-  return HStack({ spacing: 0 }, [
-    RoundedRectangle({ cornerRadius: 2 })
+  // The body is laid over the stripe so the elbow can grow out of it.
+  return HStack({ spacing: -STRIPE }, [
+    RoundedRectangle({ cornerRadius: STRIPE / 2 })
       .fill(() => accent(w()))
-      .frame({ width: 6 })
+      .frame({ width: STRIPE })
       .paddingVertical(8),
     body,
   ])
     .paddingLeading(6)
     .cornerRadius(8)
-    .background(() => (selected() ? "#FFFFFF14" : null))
-    .hoverBackground(() => (selected() ? "#FFFFFF14" : "#FFFFFF0A"))
+    .background(() => (selected() ? accent(w()) + "1F" : null))
+    .hoverBackground(() => (selected() ? accent(w()) + "1F" : "#FFFFFF0A"))
     .frame({ maxWidth: "infinity" })
     .onTap(() => cmux("workspace.select", { workspace_id: w().id }))
     .contextMenu(cardMenu(w));
@@ -506,26 +539,25 @@ function compactCard(w) {
   };
 
   return HStack({ spacing: 8 }, [
-    RoundedRectangle({ cornerRadius: 2 })
-      .fill(() => accent(w()))
-      .frame({ width: 6, height: 26 }),
-    VStack({ spacing: 2 }, [
-      HStack({ spacing: 5 }, [
-        Text(() => workspaceTitle(w()))
-          .font(14).weight("bold")
-          .lineLimit(1).truncation("tail").marquee()
-          .color(() => (selected() ? "primary" : "#FFFFFFD9")),
-        Spacer({ minLength: 0 }),
-        Image("pin.fill")
-          .font(8).color("tertiary")
-          .opacity(() => (w()?.pinned ? 1 : 0)),
-        unreadBlock(w, 9),
-      ]),
-      HStack({ spacing: 4 }, [
-        Text(subtitle)
-          .font(10).color("secondary")
-          .lineLimit(1).truncation("middle"),
-        Spacer({ minLength: 0 }),
+    HStack({ spacing: -STRIPE }, [
+      RoundedRectangle({ cornerRadius: STRIPE / 2 })
+        .fill(() => accent(w()))
+        .frame({ width: STRIPE }),
+      VStack({ spacing: 2 }, [
+        HStack({ spacing: 5 }, [
+          elbowTitle(w, 14, 1),
+          Spacer({ minLength: 0 }),
+          Image("pin.fill")
+            .font(8).color("tertiary")
+            .opacity(() => (w()?.pinned ? 1 : 0)),
+          unreadBlock(w, 9),
+        ]),
+        HStack({ spacing: 4 }, [
+          Text(subtitle)
+            .font(10).color("secondary")
+            .lineLimit(1).truncation("middle"),
+          Spacer({ minLength: 0 }),
+        ]).paddingLeading(ELBOW_INSET),
       ]),
     ]),
     // Minimap, centred on the row's height.
@@ -545,8 +577,8 @@ function compactCard(w) {
     .paddingVertical(5)
     .paddingHorizontal(6)
     .cornerRadius(7)
-    .background(() => (selected() ? "#FFFFFF14" : null))
-    .hoverBackground(() => (selected() ? "#FFFFFF14" : "#FFFFFF0A"))
+    .background(() => (selected() ? accent(w()) + "1F" : null))
+    .hoverBackground(() => (selected() ? accent(w()) + "1F" : "#FFFFFF0A"))
     .frame({ maxWidth: "infinity" })
     .onTap(() => cmux("workspace.select", { workspace_id: w().id }))
     .contextMenu(cardMenu(w));
@@ -574,6 +606,26 @@ function expanded(w) {
   return !!w?.selected || wantsAttention(w);
 }
 
+// The mode button as an LCARS block in `fill`: square at the left, where
+// it meets the bar, and a pill end at the right.
+function modeBlock(fill) {
+  const pill = 9;
+  return HStack({ spacing: -pill }, [
+    Rectangle().fill(fill).frame({ width: pill, height: 20 }),
+    HStack({ spacing: 4 }, [
+      Image(() => mode().icon).font(10).weight("bold").color("black"),
+      Text(() => mode().label.toUpperCase()).font(10).weight("bold").color("black")
+        .lineLimit(1).fixedSize(),
+    ])
+      .paddingLeading(pill)
+      .paddingTrailing(10)
+      .paddingVertical(3)
+      .fixedSize()
+      .background(fill)
+      .cornerRadius(pill),
+  ]);
+}
+
 // An LCARS header bar: solid colour blocks with black lettering, pill ends
 // on the outside and square ends where blocks meet.
 function header() {
@@ -594,21 +646,9 @@ function header() {
       .fixedSize()
       .background(LCARS.peach),
     Rectangle().fill(LCARS.lavender).frame({ maxWidth: "infinity", height: 20 }),
-    // Here the square block sits under the pill's inner end.
-    HStack({ spacing: -pill }, [
-      Rectangle().fill(LCARS.slate).frame({ width: pill, height: 20 }),
-      HStack({ spacing: 4 }, [
-        Image(() => mode().icon).font(10).weight("bold").color("black"),
-        Text(() => mode().label.toUpperCase()).font(10).weight("bold").color("black")
-          .lineLimit(1).fixedSize(),
-      ])
-        .paddingLeading(pill)
-        .paddingTrailing(10)
-        .paddingVertical(3)
-        .fixedSize()
-        .background(LCARS.slate)
-        .cornerRadius(pill),
-    ])
+    // The lit copy shows on hover. A square block under each pill's inner
+    // end squares it off, so it is drawn in the same colour as the pill.
+    ZStack({}, [modeBlock(LCARS.slate), modeBlock(LCARS.periwinkle).showOnHover()])
       .cursor("pointer")
       .onTap(() => setModeIndex((modeIndex() + 1) % MODES.length)),
   ]).frame({ height: 20 }).paddingHorizontal(6).paddingVertical(2);
