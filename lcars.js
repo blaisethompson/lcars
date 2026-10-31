@@ -452,18 +452,21 @@ function miniTile(w, t) {
   const live = () => !!t()?.focused && !!w()?.selected;
   const needsInput = () => agent()?.status === "needs_input";
   const side = () => (agent() ? 20 : 10);
-  return HStack({ spacing: 0 }, [
+  // The shape gives the tile its size; an empty Text alone collapses to
+  // nothing, which hid plain terminals' squares.
+  return ZStack([
+    RoundedRectangle({ cornerRadius: 3 })
+      .fill(() =>
+        needsInput() ? LCARS.red
+          : agent() ? "clear"
+          : accent(w()) + (live() ? "B3" : "59"))
+      .frame(() => ({ width: side(), height: side() })),
     Text(() => (agent() ? agentMark(agent()).glyph : ""))
       .font(14).weight("bold")
       .color(() => (needsInput() ? "black" : agent() ? agentMark(agent()).color : "clear"))
       .opacity(() => (agent()?.status === "idle" ? 0.4 : 1))
       .rotation(spin(agent)),
   ])
-    .frame(() => ({ width: side(), height: side() }))
-    .background(() =>
-      needsInput() ? LCARS.red
-        : agent() ? "clear"
-        : accent(w()) + (live() ? "B3" : "59"))
     .borderColor(() =>
       t()?.hasUnread ? LCARS.red : live() && !agent() ? "#FFFFFFCC" : "clear")
     .borderWidth(1)
