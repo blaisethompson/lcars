@@ -34,7 +34,10 @@ the user only wants it available in the sidebar menu.
 
 Only if `command -v opencode` succeeds, ask the user whether they want
 OpenCode sessions to show status in the sidebar. Explain that it adds cmux's
-plugin to their OpenCode config and needs an OpenCode restart. Do not run it
+plugin to their OpenCode config, patches that plugin so closed OpenCode tabs
+and quit OpenCodes leave the sidebar and tabs show their names (kept in the
+workspace description, which other cmux sidebars display), and needs an
+OpenCode restart. Do not run it
 without a yes.
 
 If they agree:
@@ -43,8 +46,15 @@ If they agree:
 "$tmp/lcars/install.sh" --opencode
 ```
 
+Check its output for `Patched …tui.js` or `OpenCode plugin patch already
+applied`. If it instead says the patch no longer applies, tell the user that
+OpenCode tabs will show as "Tab 1", "Tab 2" and closed ones will linger until
+lcars updates its patch for their cmux version.
+
 Then tell them to restart OpenCode, and pass on the limits listed under
-"OpenCode" in README.md (no tab names, resumed sessions show no status).
+"OpenCode" in README.md (clicking a tab line can't switch OpenCode's tab;
+sessions opened from OpenCode's session list show no status until a restart). Also tell them that a cmux update can drop the patch, and that
+re-running `install.sh --opencode` from a fresh clone puts it back.
 
 ## 5. Verify
 
@@ -61,9 +71,30 @@ rm -rf "$tmp"
 
 ## Uninstall
 
+If you are asked to uninstall lcars or revert its changes, get a fresh copy
+as in step 2 (the uninstaller needs the patch file to revert it), then:
+
 ```sh
-rm ~/.config/cmux/sidebars/lcars.js
+"$tmp/lcars/install.sh" --uninstall
 ```
 
-Then pick another sidebar from the sidebar button's right-click menu. To remove
-the OpenCode integration: `cmux hooks opencode uninstall`.
+This removes `~/.config/cmux/sidebars/lcars.js` (or the symlink, in a
+development setup), reverts lcars's patch to cmux's OpenCode plugin so the
+plugin matches what cmux installed, and clears the OpenCode tab names lcars
+kept in workspace descriptions. Descriptions the user wrote are left alone.
+cmux's own OpenCode integration stays installed.
+
+Ask the user whether they also want cmux's OpenCode integration removed (it
+reports OpenCode status to cmux's own sidebar too, and they may have had it
+before lcars). Only if they say yes:
+
+```sh
+"$tmp/lcars/install.sh" --uninstall --opencode
+```
+
+This also runs `cmux hooks opencode uninstall` and deletes the two duplicate
+plugin files the installer moved to `~/.config/opencode/plugins-disabled/`.
+
+Then clean up as in step 6, and tell the user to pick another sidebar from the
+sidebar button's right-click menu and to restart OpenCode. Check that
+`cmux sidebar validate lcars` no longer finds lcars.

@@ -88,33 +88,62 @@ two duplicate plugin files it also writes, which OpenCode v2 otherwise lists
 as failed with "Duplicate plugin ID: cmux.server". They go to
 `~/.config/opencode/plugins-disabled/`.
 
+It also patches the plugin (`opencode/cmux-tui.patch`) to fix two gaps:
+
+- **Closed tabs linger.** cmux's plugin only ends a session when you delete or
+  archive it, so every tab you closed and every OpenCode you quit stayed in
+  the sidebar as *Idle*. The patch ends a session once it has been out of
+  every OpenCode tab for two seconds, announces it again if you reopen it,
+  announces the tabs OpenCode restores when it starts, and ends the open ones
+  when OpenCode exits.
+- **Tabs have no names.** cmux has nowhere to keep an OpenCode session's
+  name, so the patch writes the open tabs' names into the workspace
+  description as `lcars-tabs {"<session id>": "<tab name>", …}`, and lcars
+  shows them on the session lines. lcars never displays the description, but
+  other cmux sidebars do, so you'd see that text there. A description you set
+  yourself is left alone; that workspace's tabs are then numbered instead.
+
+A cmux update that reinstalls the plugin drops the patch: run
+`./install.sh --opencode` again. If cmux changes the plugin so the patch no
+longer fits, the installer says so and leaves the plugin unpatched.
+
+lcars also hides OpenCode sessions in a terminal whose title no longer starts
+with "OC |", which covers sessions left over from before the patch.
+
 <img src="docs/opencode-tabs.png" alt="lcars showing two OpenCode tabs" width="420">
 
 What to expect:
 
-- **OpenCode tabs show as "Tab 1", "Tab 2".** cmux's plugin reports a status
-  for each tab but not its name, so lines are numbered. The numbering may not
-  match OpenCode's tab order.
+- **OpenCode tabs show their names**, updated when you rename a tab. Without
+  the patch, or with your own workspace description, they show as "Tab 1",
+  "Tab 2", in an order that may not match OpenCode's.
 - **Clicking a tab line can't switch OpenCode's tab.** It jumps to the
   terminal OpenCode runs in; tabs live inside OpenCode.
-- **Reopened sessions show no status.** A session resumed with
-  `opencode -s <id>` or from the session list keeps pointing at the OpenCode
-  process that created it, so cmux reports it as ended. New sessions work.
+- **A session opened from OpenCode's session list shows no status** until
+  OpenCode restarts. New sessions, tabs OpenCode restores at launch, and
+  closed tabs you reopen all work.
 
 For the best result, run **one OpenCode session per cmux terminal** instead of
 using OpenCode's tabs: press ⌘T (new terminal) or ⌘D (split), then run
 `opencode`. Each session then gets its own tile, named after the session, and
 clicking it takes you straight there.
 
-To remove the integration: `cmux hooks opencode uninstall`.
+To remove it again, see [Uninstall](#uninstall).
 
 ## Uninstall
 
+From a clone of this repo:
+
 ```sh
-rm ~/.config/cmux/sidebars/lcars.js
+./install.sh --uninstall
 ```
 
-and choose another sidebar from the sidebar button's right-click menu.
+This removes the sidebar, reverts the OpenCode plugin patch, and clears the
+OpenCode tab names kept in workspace descriptions (yours are left alone).
+Add `--opencode` to also remove cmux's OpenCode integration. Then choose
+another sidebar from the sidebar button's right-click menu and restart
+OpenCode. An agent can do this too: ask it to uninstall lcars following
+AGENTS.md.
 
 ## Credits
 

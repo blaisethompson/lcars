@@ -1,0 +1,152 @@
+--- tui.js
++++ tui.js
+@@ -4,7 +4,7 @@
+ 
+ import fs from "node:fs";
+ import path from "node:path";
+-import { spawn } from "node:child_process";
++import { spawn, spawnSync } from "node:child_process";
+ import { createEffect, createRoot } from "solid-js";
+ import { CMUXFeed } from "./index.js";
+ 
+@@ -355,8 +355,125 @@
+       pending.set(id, queued);
+     }
+     if (!queued.events.has(event.type)) queued.events.set(event.type, event);
++  };
++  // lcars-opencode-patch v2: see github.com/blaisethompson/lcars.
++  // lcars: cmux only hears that a session ended when it is deleted or
++  // archived, so a closed tab or a quit OpenCode stays "idle" in cmux for
++  // good. End a session once it has been out of every tab for a moment,
++  // start it again if it comes back, and end the open ones on exit.
++  const LCARS_END_DELAY_MS = 2_000;
++  const lcarsOpen = new Set();
++  const lcarsEnded = new Set();
++  const lcarsClosing = new Map();
++  const lcarsSend = (hook, id) => {
++    const type = hook === "session-end" ? "session.deleted" : "session.created";
++    dispatchSessionHook(hook, {
++      session_id: id,
++      cwd: cwd(ctx, null),
++      event: type,
++      hook_event_name: type,
++    }, spawn, environment);
++  };
++  // Tabs already open when this bridge starts (a relaunch restoring tabs, or
++  // OpenCode reloading the plugin, which ends them first) are announced too.
++  let lcarsFirstSync = true;
++  const lcarsSync = () => {
++    if (disposed) return;
++    lcarsNamesSync();
++    const roots = visibleRoots(ctx);
++    if (lcarsFirstSync) {
++      lcarsFirstSync = false;
++      for (const id of roots) lcarsEnded.add(id);
++    }
++    for (const id of roots) {
++      clearTimeout(lcarsClosing.get(id));
++      lcarsClosing.delete(id);
++      if (lcarsEnded.delete(id)) lcarsSend("session-start", id);
++      lcarsOpen.add(id);
++    }
++    for (const id of lcarsOpen) {
++      if (roots.has(id) || lcarsClosing.has(id)) continue;
++      lcarsClosing.set(id, setTimeout(() => {
++        lcarsClosing.delete(id);
++        if (disposed || visibleRoots(ctx).has(id)) return;
++        lcarsOpen.delete(id);
++        lcarsEnded.add(id);
++        lcarsSend("session-end", id);
++      }, LCARS_END_DELAY_MS));
++    }
++  };
++  // lcars: cmux has no name for an OpenCode session, so the sidebar can only
++  // number them. Keep {sessionID: tab title} for this TUI's tabs in the
++  // workspace description, behind a marker the lcars sidebar reads and hides.
++  // A description without the marker is the user's and is left alone; other
++  // OpenCodes in the workspace merge their own entries into the same map.
++  const LCARS_NAMES_MARK = "lcars-tabs ";
++  const lcarsWorkspace = environment.CMUX_WORKSPACE_ID;
++  const lcarsCmux = environment.CMUX_OPENCODE_CMUX_BIN || "cmux";
++  let lcarsNames = {};
++  let lcarsNamesSent = "{}";
++  let lcarsNamesWriting = false;
++  let lcarsNamesAgain = false;
++  const lcarsNamesWrite = (names, previous, sync) => {
++    const env = { ...environment, CMUX_QUIET: "1", CMUXTERM_CLI_RESPONSE_TIMEOUT_SEC: "1" };
++    const listed = spawnSync(lcarsCmux, ["rpc", "workspace.list", "{}"], { env, encoding: "utf8", timeout: 2000 });
++    let description = "";
++    try {
++      const workspaces = JSON.parse(listed.stdout).workspaces || [];
++      description = workspaces.find((w) => w.id === lcarsWorkspace)?.description || "";
++    } catch (_) {
++      return;
++    }
++    if (description && !description.startsWith(LCARS_NAMES_MARK)) return;
++    let merged = {};
++    try { if (description) merged = JSON.parse(description.slice(LCARS_NAMES_MARK.length)); } catch (_) {}
++    for (const id of Object.keys(previous)) delete merged[id];
++    Object.assign(merged, names);
++    const args = Object.keys(merged).length
++      ? ["workspace-action", "--workspace", lcarsWorkspace, "--action", "set-description",
++        "--description", LCARS_NAMES_MARK + JSON.stringify(merged)]
++      : ["workspace-action", "--workspace", lcarsWorkspace, "--action", "clear-description"];
++    if (sync) spawnSync(lcarsCmux, args, { env, stdio: "ignore", timeout: 2000 });
++    else spawn(lcarsCmux, args, { env, stdio: "ignore", detached: true }).on("error", () => {}).unref();
+   };
++  const lcarsNamesSync = () => {
++    if (!lcarsWorkspace || disposed) return;
++    const names = {};
++    try {
++      for (const tab of ctx?.ui?.tabs?.list?.() || []) {
++        const id = typeof tab === "string" ? null : tab?.sessionID || tab?.sessionId;
++        const title = typeof tab?.title === "string" ? tab.title.trim() : "";
++        if (id && title) names[id] = title;
++      }
++    } catch (_) {}
++    const sent = JSON.stringify(names);
++    if (sent === lcarsNamesSent) return;
++    if (lcarsNamesWriting) { lcarsNamesAgain = true; return; }
++    const previous = JSON.parse(lcarsNamesSent);
++    lcarsNamesSent = sent;
++    lcarsNames = names;
++    lcarsNamesWriting = true;
++    // Off the render path: the read is synchronous, so defer it a tick.
++    setTimeout(() => {
++      try { lcarsNamesWrite(names, previous, false); } catch (_) {}
++      lcarsNamesWriting = false;
++      if (lcarsNamesAgain) { lcarsNamesAgain = false; lcarsNamesSync(); }
++    }, 0);
++  };
++  const lcarsEndAll = () => {
++    for (const timer of lcarsClosing.values()) clearTimeout(timer);
++    lcarsClosing.clear();
++    for (const id of lcarsOpen) lcarsSend("session-end", id);
++    lcarsOpen.clear();
++    if (lcarsWorkspace && Object.keys(lcarsNames).length) {
++      try { lcarsNamesWrite({}, lcarsNames, true); } catch (_) {}
++      lcarsNames = {};
++      lcarsNamesSent = "{}";
++    }
++  };
++  process.once("exit", lcarsEndAll);
+   const onEvent = ({ details, event }) => {
++    lcarsSync();
+     const incoming = details || event;
+     const incomingID = sessionID(incoming);
+     if (sessionEventName(incoming) === "session-end") cancelPending(incomingID);
+@@ -377,11 +494,14 @@
+       // commit therefore flushes queued lifecycle events even when idle.
+       ownership.refresh();
+       flushPending();
++      lcarsSync();
+     });
+     return dispose;
+   });
+   flushPending();
+   return () => {
++    process.off("exit", lcarsEndAll);
++    lcarsEndAll();
+     disposed = true;
+     disposeReactive?.();
+     for (const queued of pending.values()) clearTimeout(queued.expiry);

@@ -96,8 +96,18 @@ function elapsed(since) {
   return h < 24 ? h + "h" : Math.floor(h / 24) + "d";
 }
 
+// cmux never hears that OpenCode quit, so its sessions stay "idle" after
+// the terminal is back at a shell. OpenCode titles its terminal "OC | …"
+// while it runs; hide its sessions in a terminal that no longer says so.
+const OPENCODE_TITLE = /^OC \||opencode/i;
+
 function liveAgents(w) {
-  return (w?.agents ?? []).filter((a) => STATUS[a.status]);
+  return (w?.agents ?? []).filter((a) => {
+    if (!STATUS[a.status]) return false;
+    if (a.kind !== "opencode") return true;
+    const tab = (w?.tabs ?? []).find((t) => t.id === a.panelId);
+    return !tab || OPENCODE_TITLE.test(tab.title ?? "");
+  });
 }
 
 function topAgent(w) {
@@ -114,6 +124,21 @@ function agentForTab(w, tab) {
   return live[0] ?? null;
 }
 
+// lcars's OpenCode plugin patch keeps each open tab's name in the workspace
+// description as "lcars-tabs {sessionID: title}". lcars never shows the
+// description, so the map stays out of sight.
+const TAB_NAMES_MARK = "lcars-tabs ";
+
+function tabNames(w) {
+  const d = w?.description ?? "";
+  if (!d.startsWith(TAB_NAMES_MARK)) return {};
+  try { return JSON.parse(d.slice(TAB_NAMES_MARK.length)) ?? {}; } catch (e) { return {}; }
+}
+
+function agentName(w, a) {
+  return a.title || tabNames(w)[a.id] || "";
+}
+
 function statusLine(w) {
   const a = topAgent(w);
   if (!a) return null;
@@ -122,12 +147,12 @@ function statusLine(w) {
   return {
     color: meta.color,
     text: meta.label + (since ? " · " + elapsed(since) : ""),
-    who: a.name || a.kind || "",
+    who: agentName(w, a) || a.name || a.kind || "",
   };
 }
 
-// One entry per live agent session, labelled by the terminal it runs in.
-// OpenCode reports a session per tab without tab names, so tabs sharing a
+// One entry per live agent session, labelled with its name when one is known
+// and otherwise by the terminal it runs in. Unnamed OpenCode tabs sharing a
 // terminal are numbered in a stable order.
 function sessions(w) {
   const live = liveAgents(w).slice().sort((a, b) => (a.id < b.id ? -1 : 1));
@@ -142,7 +167,8 @@ function sessions(w) {
     const where = tab ? tabLabel(w, tab) : (a.name || a.kind || "agent");
     const terminals = new Set(live.map((x) => x.panelId)).size;
     let label = where;
-    if (a.title) label = a.title;
+    const name = agentName(w, a);
+    if (name) label = terminals > 1 ? name + " · " + where : name;
     else if (perPanel.get(a.panelId) > 1) label = terminals > 1 ? "Tab " + n + " · " + where : "Tab " + n;
     return { key: a.id, agent: a, label };
   });
