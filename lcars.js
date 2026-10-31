@@ -330,6 +330,7 @@ function shortcutHint(w, size) {
 // A workspace's colour stripe, and the gap from it to the text.
 const STRIPE = 6;
 const ELBOW_INSET = STRIPE + 8;
+const ELBOW_RADIUS = 5;
 
 // The workspace name, laid over the top of the stripe. When selected the
 // stripe turns right behind it, an LCARS elbow, with the name in black (or
@@ -345,7 +346,7 @@ function elbowTitle(w, size, pad) {
     .paddingTrailing(() => (selected() ? 7 : 0))
     .paddingVertical(pad)
     .background(() => (selected() ? accent(w()) : null))
-    .cornerRadius(5);
+    .cornerRadius(ELBOW_RADIUS);
 }
 
 function card(w) {
@@ -427,7 +428,9 @@ function card(w) {
     RoundedRectangle({ cornerRadius: STRIPE / 2 })
       .fill(() => accent(w()))
       .frame({ width: STRIPE })
-      .paddingVertical(8),
+      // Under the elbow, start below its rounded corner so that shows.
+      .paddingTop(() => (selected() ? 8 + ELBOW_RADIUS : 8))
+      .paddingBottom(8),
     body,
   ])
     .paddingLeading(6)
@@ -542,7 +545,8 @@ function compactCard(w) {
     HStack({ spacing: -STRIPE }, [
       RoundedRectangle({ cornerRadius: STRIPE / 2 })
         .fill(() => accent(w()))
-        .frame({ width: STRIPE }),
+        .frame({ width: STRIPE })
+        .paddingTop(() => (selected() ? ELBOW_RADIUS : 0)),
       VStack({ spacing: 2 }, [
         HStack({ spacing: 5 }, [
           elbowTitle(w, 14, 1),
