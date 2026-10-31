@@ -1,7 +1,7 @@
 // lcars: workspace cards with name, folder and branch, the live agent's
 // status and last message, and a minimap row with one tile per terminal.
 // Click a card to select the workspace, a tile to focus that terminal, and
-// drag cards to reorder. Right-click a card for pin, mark read, move and close.
+// drag cards to reorder. Right-click a card for pin, mark read, new tab, move and close.
 //
 // https://github.com/blaisethompson/lcars
 //
@@ -303,6 +303,14 @@ function unreadBlock(w, size) {
     .layoutPriority(2);
 }
 
+// ⌘1–⌘9 select the first nine workspaces; show which is which.
+function shortcutHint(w, size) {
+  const i = () => w()?.index ?? 9;
+  return Text(() => (i() < 9 ? "⌘" + (i() + 1) : ""))
+    .font(size).monospaced().color("tertiary")
+    .lineLimit(1).fixedSize().layoutPriority(2);
+}
+
 function card(w) {
   const selected = () => !!w()?.selected;
   const folder = () => basename(w()?.directory);
@@ -322,6 +330,7 @@ function card(w) {
         .font(9).color("tertiary")
         .opacity(() => (w()?.pinned ? 1 : 0)),
       unreadBlock(w, 10),
+      shortcutHint(w, 10),
     ]),
 
     // Folder and branch.
@@ -401,8 +410,15 @@ function cardMenu(w) {
       cmux("workspace.action", { action: w()?.pinned ? "unpin" : "pin", workspace_id: w().id })),
     Button(() => (w()?.unread > 0 ? "Mark as Read" : "Mark as Unread"), () =>
       cmux("workspace.action", { action: w()?.unread > 0 ? "mark_read" : "mark_unread", workspace_id: w().id })),
+    Button("New Tab", () =>
+      cmux("surface.create", { workspace_id: w().id, focus: true })),
+    Divider(),
     Button("Move to Top", () =>
       cmux("workspace.action", { action: "move_top", workspace_id: w().id })),
+    Button("Move Up", () =>
+      cmux("workspace.action", { action: "move_up", workspace_id: w().id })),
+    Button("Move Down", () =>
+      cmux("workspace.action", { action: "move_down", workspace_id: w().id })),
     Divider(),
     Button("Close…", () => setClosing(w().id)).destructive(),
   ];
@@ -516,6 +532,9 @@ function compactCard(w) {
         (t) => miniTile(w, t)
       ),
     ]).fixedSize().layoutPriority(2),
+    // At the right edge, level with the name, so it lines up from row to row.
+    VStack({ spacing: 0 }, [shortcutHint(w, 9), Spacer({ minLength: 0 })])
+      .frame({ height: 26 }),
   ])
     .paddingVertical(5)
     .paddingHorizontal(6)
