@@ -497,6 +497,7 @@ function miniTile(w, t) {
 
 function compactCard(w) {
   const selected = () => !!w()?.selected;
+  const extra = () => Math.max(0, (w()?.tabs?.length ?? 0) - MAX_TILES);
   const subtitle = () => {
     const folder = basename(w()?.directory);
     return w()?.branch ? folder + " · " + w().branch : folder;
@@ -528,8 +529,11 @@ function compactCard(w) {
     // Minimap, centred on the row's height.
     HStack({ spacing: 3 }, [
       ForEach(
-        { items: () => (w()?.tabs ?? []).slice(0, 8), key: (t) => t.id },
+        { items: () => (w()?.tabs ?? []).slice(0, MAX_TILES), key: (t) => t.id },
         (t) => miniTile(w, t)
+      ),
+      when(() => (extra() > 0 ? "+" + extra() : ""), "extra", (n) =>
+        Text(() => n()).font(9).monospaced().color("tertiary").fixedSize()
       ),
     ]).fixedSize().layoutPriority(2),
     // At the right edge, level with the name, so it lines up from row to row.
