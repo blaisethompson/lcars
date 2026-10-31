@@ -430,10 +430,10 @@ function miniTile(w, t) {
   const agent = () => agentForTab(w(), t());
   const live = () => !!t()?.focused && !!w()?.selected;
   const needsInput = () => agent()?.status === "needs_input";
-  const side = () => (agent() ? 16 : 10);
+  const side = () => (agent() ? 20 : 10);
   return HStack({ spacing: 0 }, [
     Text(() => (agent() ? agentMark(agent()).glyph : ""))
-      .font(11).weight("bold")
+      .font(14).weight("bold")
       .color(() => (needsInput() ? "black" : agent() ? agentMark(agent()).color : "clear"))
       .opacity(() => (agent()?.status === "idle" ? 0.4 : 1))
       .rotation(spin(agent)),
@@ -482,15 +482,16 @@ function compactCard(w) {
         Text(subtitle)
           .font(10).color("secondary")
           .lineLimit(1).truncation("middle"),
-        Spacer({ minLength: 4 }),
-        HStack({ spacing: 3 }, [
-          ForEach(
-            { items: () => (w()?.tabs ?? []).slice(0, 8), key: (t) => t.id },
-            (t) => miniTile(w, t)
-          ),
-        ]).fixedSize().layoutPriority(2),
+        Spacer({ minLength: 0 }),
       ]),
     ]),
+    // Minimap, centred on the row's height.
+    HStack({ spacing: 3 }, [
+      ForEach(
+        { items: () => (w()?.tabs ?? []).slice(0, 8), key: (t) => t.id },
+        (t) => miniTile(w, t)
+      ),
+    ]).fixedSize().layoutPriority(2),
   ])
     .paddingVertical(5)
     .paddingHorizontal(6)
