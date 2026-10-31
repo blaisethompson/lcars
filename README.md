@@ -51,8 +51,11 @@ left side:
 Compact rows show the same marks at the end of the row, on red when the agent
 needs input.
 
-Claude Code doesn't report an interrupted turn (Esc), so a mark keeps turning
-and the card says *Working* until your next prompt.
+Claude Code doesn't report an interrupted turn (Esc), so cmux keeps such an
+agent *Working* until your next prompt. Agents report on every tool call, so
+after two minutes without a report lcars stops the mark turning and shows
+*Working · quiet 2m*. It never calls the agent idle, because a long build or
+a long reply is silent too; the mark turns again at the next tool call.
 
 Click a card to switch to it, click a tile to jump to that terminal, drag
 cards to reorder them, and right-click for pin, mark read, move and close.

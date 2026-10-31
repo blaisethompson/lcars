@@ -45,14 +45,34 @@ const AGENTS = {
 const OTHER_AGENT = { glyph: "◆", color: LCARS.peach, step: 90 };
 const agentMark = (a) => AGENTS[a?.kind] ?? OTHER_AGENT;
 
-// Rotation binding for a tile's mark. There are no timers, so it follows
-// the ~1s clock; the angle only grows, so the spring never spins backwards,
-// and it holds still once the agent stops working.
+// Claude Code doesn't report an interrupted turn, so an agent can stay
+// "working" until the next prompt. Hooks fire on every tool call, so a
+// working agent that has been silent this long is shown as quiet: its mark
+// stops turning, but it is never called idle, since a long build or a long
+// reply is silent too.
+const QUIET_AFTER = 120;
+
+function quiet(a) {
+  if (a?.status !== "working") return false;
+  const last = Math.max(a.lastActivityAt ?? 0, a.sinceEpoch ?? 0);
+  return last > 0 && epoch() - last > QUIET_AFTER;
+}
+
+// Rotation binding for a tile's mark. There are no timers, so it turns one
+// step per ~1s clock tick while the agent works; the angle only grows, so
+// the spring never spins backwards, and it holds still otherwise.
 function spin(agent) {
   let angle = 0;
+  let tick = null;
   return () => {
     const a = agent();
-    if (a?.status === "working") angle = Math.floor(epoch()) * agentMark(a).step;
+    const now = Math.floor(epoch());
+    if (a?.status === "working" && !quiet(a) && now !== tick) {
+      if (tick !== null) angle += agentMark(a).step;
+      tick = now;
+    } else if (a?.status !== "working" || quiet(a)) {
+      tick = null;
+    }
     return angle;
   };
 }
@@ -146,7 +166,7 @@ function statusLine(w) {
   const since = a.status === "idle" ? null : a.sinceEpoch;
   return {
     color: meta.color,
-    text: meta.label + (since ? " · " + elapsed(since) : ""),
+    text: meta.label + (quiet(a) ? " · " + sessionAge(a) : since ? " · " + elapsed(since) : ""),
     who: agentName(w, a) || a.name || a.kind || "",
   };
 }
@@ -175,6 +195,7 @@ function sessions(w) {
 }
 
 function sessionAge(a) {
+  if (quiet(a)) return "quiet " + elapsed(Math.max(a.lastActivityAt ?? 0, a.sinceEpoch ?? 0));
   if (a.status !== "idle" && a.sinceEpoch) return elapsed(a.sinceEpoch);
   return a.lastActivityAt ? elapsed(a.lastActivityAt) : "";
 }
