@@ -1,7 +1,7 @@
 // lcars: workspace cards with name, folder and branch, the live agent's
 // status and last message, and a minimap row with one tile per terminal.
 // Click a card to select the workspace, a tile to focus that terminal, and
-// drag cards to reorder.
+// drag cards to reorder. Right-click a card for pin, mark read, move and close.
 //
 // https://github.com/blaisethompson/lcars
 //
@@ -291,8 +291,44 @@ function cardMenu(w) {
     Button("Move to Top", () =>
       cmux("workspace.action", { action: "move_top", workspace_id: w().id })),
     Divider(),
-    Button("Close", () => cmux("workspace.close", { workspace_id: w().id })).destructive(),
+    Button("Close…", () => setClosing(w().id)).destructive(),
   ];
+}
+
+// Sidebars can't show a dialog, and cmux refuses to close a workspace with a
+// running process unless the call is forced. "Close…" asks here instead, and
+// the confirmed close is forced like the built-in sidebar's.
+const [closing, setClosing] = signal(null);
+
+function closeConfirm(w) {
+  const button = (icon, color, fill, hover, onTap) =>
+    Image(icon).font(10).weight("bold").color(color)
+      .paddingHorizontal(8).paddingVertical(4)
+      .fixedSize()
+      .background(fill)
+      .hoverBackground(hover)
+      .cornerRadius(6)
+      .cursor("pointer")
+      .onTap(onTap);
+  return HStack({ spacing: 6 }, [
+    RoundedRectangle({ cornerRadius: 2 })
+      .fill("#FF453A")
+      .frame({ width: 3, height: 26 }),
+    Text(() => "Close " + (w()?.title ?? "workspace") + "?")
+      .font(12).weight("semibold")
+      .lineLimit(1).truncation("tail"),
+    Spacer({ minLength: 4 }),
+    button("arrow.uturn.backward", "secondary", "#FFFFFF1F", "#FFFFFF33", () => setClosing(null)),
+    button("xmark", "white", "#FF453AD9", "#FF453A", () => {
+      setClosing(null);
+      cmux("workspace.close", { workspace_id: w().id, force: true });
+    }),
+  ])
+    .paddingVertical(5)
+    .paddingHorizontal(6)
+    .cornerRadius(7)
+    .background("#FF453A1F")
+    .frame({ maxWidth: "infinity" });
 }
 
 // Compact minimap: a small square per terminal, filled with its agent's
@@ -426,8 +462,9 @@ sidebar(() =>
         const id = item().id;
         const w = () => findWorkspace(id) ?? item();
         return VStack({ spacing: 0 }, [
-          when(() => !expanded(w()), "compact", () => compactCard(w)),
-          when(() => expanded(w()), "full", () => card(w)),
+          when(() => closing() === id, "close", () => closeConfirm(w)),
+          when(() => closing() !== id && !expanded(w()), "compact", () => compactCard(w)),
+          when(() => closing() !== id && expanded(w()), "full", () => card(w)),
         ]);
       }
     ),

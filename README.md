@@ -47,6 +47,11 @@ Each workspace is a card:
 Click a card to switch to it, click a tile to jump to that terminal, drag
 cards to reorder them, and right-click for pin, mark read, move and close.
 
+**Close…** turns the card into a "Close <name>?" row: ↩ puts the card back,
+the red × closes the workspace. It asks every time because a sidebar can't
+tell whether a workspace has something running, and the confirmed close ends
+any running processes, like closing from cmux's own sidebar.
+
 ### Modes
 
 The button at the top right cycles through:
