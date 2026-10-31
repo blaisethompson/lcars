@@ -8,16 +8,54 @@
 // Open as a pane:      cmux sidebar open lcars
 // Use as left sidebar: cmux sidebar select lcars
 
+// LCARS panel colours. Red is kept for alerts: needs input, unread, close.
+const LCARS = {
+  amber: "#FF9900",
+  peach: "#FFCC99",
+  lavender: "#CC99CC",
+  periwinkle: "#9999FF",
+  salmon: "#FF9966",
+  ice: "#99CCFF",
+  gold: "#FFCC66",
+  mauve: "#CC6699",
+  slate: "#9999CC",
+  tan: "#CC9966",
+  red: "#FF5555",
+};
+
 const PALETTE = [
-  "#0A84FF", "#30D158", "#FF9F0A", "#BF5AF2", "#FF375F",
-  "#64D2FF", "#FFD60A", "#5E5CE6", "#AC8E68", "#66D4CF",
+  LCARS.amber, LCARS.peach, LCARS.lavender, LCARS.periwinkle, LCARS.salmon,
+  LCARS.ice, LCARS.gold, LCARS.mauve, LCARS.slate, LCARS.tan,
 ];
 
 const STATUS = {
-  needs_input: { label: "Needs input", color: "#FF9F0A", rank: 3 },
-  working: { label: "Working", color: "#0A84FF", rank: 2 },
-  idle: { label: "Idle", color: "#34C759", rank: 1 },
+  needs_input: { label: "Needs input", color: LCARS.red, rank: 3 },
+  working: { label: "Working", color: LCARS.amber, rank: 2 },
+  idle: { label: "Idle", color: LCARS.periwinkle, rank: 1 },
 };
+
+// Each agent keeps its own mark and colour; its state shows as strength
+// (faded when idle) and a red tile border when it needs input.
+// `step` is the glyph's symmetry angle: a working mark turns one step per
+// clock tick, so it always comes to rest looking upright.
+const AGENTS = {
+  claude: { glyph: "✱", color: LCARS.amber, step: 60 },
+  opencode: { glyph: "▣", color: LCARS.ice, step: 90 },
+};
+const OTHER_AGENT = { glyph: "◆", color: LCARS.peach, step: 90 };
+const agentMark = (a) => AGENTS[a?.kind] ?? OTHER_AGENT;
+
+// Rotation binding for a tile's mark. There are no timers, so it follows
+// the ~1s clock; the angle only grows, so the spring never spins backwards,
+// and it holds still once the agent stops working.
+function spin(agent) {
+  let angle = 0;
+  return () => {
+    const a = agent();
+    if (a?.status === "working") angle = Math.floor(epoch()) * agentMark(a).step;
+    return angle;
+  };
+}
 
 const MAX_TILES = 3;
 
@@ -46,7 +84,7 @@ function hashColor(key) {
 
 function accent(w) {
   if (!w) return "#7f7f7f";
-  return w.color || hashColor(basename(w.directory) || w.title || w.id);
+  return w.color || hashColor(w.id);
 }
 
 function elapsed(since) {
@@ -146,6 +184,14 @@ function cleanMessage(text) {
   return t.replace(/\s+/g, " ");
 }
 
+// A workspace still named after its path reads as "folder/".
+function workspaceTitle(w) {
+  const title = (w?.title ?? "").trim();
+  if (!title) return basename(w?.directory) + "/";
+  if (title.startsWith("~/") || title.startsWith("/")) return basename(title) + "/";
+  return title;
+}
+
 function tabLabel(w, t) {
   const title = (t?.title ?? "").trim();
   if (!title) return "terminal";
@@ -153,27 +199,41 @@ function tabLabel(w, t) {
   return title;
 }
 
+// A tall tile per terminal: the workspace tint, the agent's ✱ in its status
+// colour in the middle, and the terminal's name across the top.
 function tile(w, t) {
   const agent = () => agentForTab(w(), t());
   const focused = () => !!t()?.focused;
   const live = () => focused() && !!w()?.selected;
-  return HStack({ spacing: 4 }, [
-    Circle({ size: 5 })
-      .fill(() => (agent() ? STATUS[agent().status].color : accent(w()) + "80")),
-    Text(() => tabLabel(w(), t()))
-      .font(10)
-      .lineLimit(1)
-      .truncation("tail")
-      .color(() => (live() ? "primary" : "secondary")),
+  return VStack({ spacing: 0 }, [
+    HStack({ spacing: 3 }, [
+      Text(() => tabLabel(w(), t()))
+        .font(10)
+        .lineLimit(1)
+        .truncation("tail")
+        .color(() => (live() ? "primary" : "secondary")),
+      Spacer({ minLength: 0 }),
+      Circle({ size: 6 }).fill(() => (t()?.hasUnread ? LCARS.red : "clear")),
+    ]),
     Spacer({ minLength: 0 }),
-    Circle({ size: 5 }).fill(() => (t()?.hasUnread ? "#FF453A" : "clear")),
+    HStack({ spacing: 0 }, [
+      Spacer({ minLength: 0 }),
+      Text(() => (agent() ? agentMark(agent()).glyph : ""))
+        .font(20).weight("bold")
+        .color(() => (agent() ? agentMark(agent()).color : "clear"))
+        .opacity(() => (agent()?.status === "idle" ? 0.4 : 1))
+        .rotation(spin(agent)),
+      Spacer({ minLength: 0 }),
+    ]),
+    Spacer({ minLength: 0 }),
   ])
-    .paddingHorizontal(6)
-    .frame({ maxWidth: "infinity", height: 22 })
-    .background(() => accent(w()) + (live() ? "40" : focused() ? "26" : "14"))
-    .borderColor(() => accent(w()) + (live() ? "B3" : "33"))
-    .borderWidth(1)
-    .cornerRadius(5)
+    .padding(5)
+    .frame({ maxWidth: "infinity", height: 56 })
+    .background(() => accent(w()) + (live() ? "59" : focused() ? "38" : "21"))
+    .borderColor(() =>
+      agent()?.status === "needs_input" ? LCARS.red : accent(w()) + (live() ? "D9" : "40"))
+    .borderWidth(() => (live() || agent()?.status === "needs_input" ? 2 : 1))
+    .cornerRadius(6)
     .hoverBackground(() => accent(w()) + "4D")
     .cursor("pointer")
     .onTap(() => {
@@ -181,6 +241,19 @@ function tile(w, t) {
       if (sid) cmux("surface.focus", { surface_id: sid, workspace_id: w().id });
       else cmux("workspace.select", { workspace_id: w().id });
     });
+}
+
+// Unread count as an LCARS readout: a squared red block with black digits.
+function unreadBlock(w, size) {
+  const n = () => w()?.unread ?? 0;
+  return Text(() => (n() > 0 ? String(n()).padStart(2, "0") : ""))
+    .font(size).weight("bold").monospaced().color("black")
+    .paddingHorizontal(() => (n() > 0 ? 4 : 0))
+    .paddingVertical(() => (n() > 0 ? 1 : 0))
+    .background(() => (n() > 0 ? LCARS.red : null))
+    .cornerRadius(3)
+    .fixedSize()
+    .layoutPriority(2);
 }
 
 function card(w) {
@@ -193,22 +266,15 @@ function card(w) {
   const body = VStack({ spacing: 5 }, [
     // Title row: name, then pin / unread badge.
     HStack({ spacing: 6 }, [
-      Text(() => w()?.title ?? "")
-        .font(13).weight("semibold")
+      Text(() => workspaceTitle(w()))
+        .font(16).weight("bold")
         .lineLimit(1).truncation("tail").marquee()
         .color(() => (selected() ? "primary" : "#FFFFFFD9")),
       Spacer({ minLength: 0 }),
       Image("pin.fill")
         .font(9).color("tertiary")
         .opacity(() => (w()?.pinned ? 1 : 0)),
-      Text(() => (w()?.unread > 0 ? String(w().unread) : ""))
-        .font(10).weight("semibold").monospaced().color("white")
-        .paddingHorizontal(() => (w()?.unread > 0 ? 5 : 0))
-        .paddingVertical(() => (w()?.unread > 0 ? 1 : 0))
-        .background(() => (w()?.unread > 0 ? "#FF453A" : null))
-        .cornerRadius(7)
-        .fixedSize()
-        .layoutPriority(2),
+      unreadBlock(w, 10),
     ]),
 
     // Folder and branch.
@@ -217,9 +283,9 @@ function card(w) {
       Text(folder).font(11).color("secondary").lineLimit(1).truncation("tail"),
       Image("arrow.triangle.branch").font(9).color("tertiary")
         .opacity(() => (branch() ? 1 : 0)),
-      Text(branch).font(11).monospaced().color("#66D4CF")
+      Text(branch).font(11).monospaced().color(LCARS.periwinkle)
         .lineLimit(1).truncation("middle"),
-      Circle({ size: 5 }).fill(() => (branch() && w()?.dirty ? "#FFD60A" : "clear")),
+      Circle({ size: 5 }).fill(() => (branch() && w()?.dirty ? LCARS.gold : "clear")),
       Spacer({ minLength: 0 }),
     ]),
 
@@ -268,8 +334,8 @@ function card(w) {
 
   return HStack({ spacing: 0 }, [
     RoundedRectangle({ cornerRadius: 2 })
-      .fill(() => accent(w()) + (selected() ? "FF" : "8C"))
-      .frame({ width: 3 })
+      .fill(() => accent(w()))
+      .frame({ width: 6 })
       .paddingVertical(8),
     body,
   ])
@@ -312,14 +378,14 @@ function closeConfirm(w) {
       .onTap(onTap);
   return HStack({ spacing: 6 }, [
     RoundedRectangle({ cornerRadius: 2 })
-      .fill("#FF453A")
-      .frame({ width: 3, height: 26 }),
-    Text(() => "Close " + (w()?.title ?? "workspace") + "?")
+      .fill(LCARS.red)
+      .frame({ width: 6, height: 26 }),
+    Text(() => "Close " + workspaceTitle(w()) + "?")
       .font(12).weight("semibold")
       .lineLimit(1).truncation("tail"),
     Spacer({ minLength: 4 }),
     button("arrow.uturn.backward", "secondary", "#FFFFFF1F", "#FFFFFF33", () => setClosing(null)),
-    button("xmark", "white", "#FF453AD9", "#FF453A", () => {
+    button("xmark", "white", LCARS.red + "D9", LCARS.red, () => {
       setClosing(null);
       cmux("workspace.close", { workspace_id: w().id, force: true });
     }),
@@ -327,21 +393,34 @@ function closeConfirm(w) {
     .paddingVertical(5)
     .paddingHorizontal(6)
     .cornerRadius(7)
-    .background("#FF453A1F")
+    .background(LCARS.red + "1F")
     .frame({ maxWidth: "infinity" });
 }
 
-// Compact minimap: a small square per terminal, filled with its agent's
-// status colour or the workspace tint.
+// Compact minimap: a terminal running an agent shows that agent's mark on
+// the row itself (faded when idle, on red when it needs input); any other
+// terminal is a small square in the workspace tint.
 function miniTile(w, t) {
   const agent = () => agentForTab(w(), t());
   const live = () => !!t()?.focused && !!w()?.selected;
-  return RoundedRectangle({ cornerRadius: 2 })
-    .fill(() => (agent() ? STATUS[agent().status].color : accent(w()) + (live() ? "B3" : "59")))
-    .frame({ width: 10, height: 10 })
-    .borderColor(() => (live() ? "#FFFFFFCC" : t()?.hasUnread ? "#FF453A" : "clear"))
+  const needsInput = () => agent()?.status === "needs_input";
+  const side = () => (agent() ? 16 : 10);
+  return HStack({ spacing: 0 }, [
+    Text(() => (agent() ? agentMark(agent()).glyph : ""))
+      .font(11).weight("bold")
+      .color(() => (needsInput() ? "black" : agent() ? agentMark(agent()).color : "clear"))
+      .opacity(() => (agent()?.status === "idle" ? 0.4 : 1))
+      .rotation(spin(agent)),
+  ])
+    .frame(() => ({ width: side(), height: side() }))
+    .background(() =>
+      needsInput() ? LCARS.red
+        : agent() ? "clear"
+        : accent(w()) + (live() ? "B3" : "59"))
+    .borderColor(() =>
+      t()?.hasUnread ? LCARS.red : live() && !agent() ? "#FFFFFFCC" : "clear")
     .borderWidth(1)
-    .cornerRadius(2)
+    .cornerRadius(3)
     .cursor("pointer")
     .onTap(() => {
       const sid = t()?.surfaceId;
@@ -352,7 +431,6 @@ function miniTile(w, t) {
 
 function compactCard(w) {
   const selected = () => !!w()?.selected;
-  const status = () => topAgent(w());
   const subtitle = () => {
     const folder = basename(w()?.directory);
     return w()?.branch ? folder + " · " + w().branch : folder;
@@ -360,30 +438,21 @@ function compactCard(w) {
 
   return HStack({ spacing: 8 }, [
     RoundedRectangle({ cornerRadius: 2 })
-      .fill(() => accent(w()) + (selected() ? "FF" : "8C"))
-      .frame({ width: 3, height: 26 }),
+      .fill(() => accent(w()))
+      .frame({ width: 6, height: 26 }),
     VStack({ spacing: 2 }, [
       HStack({ spacing: 5 }, [
-        Text(() => w()?.title ?? "")
-          .font(12).weight("semibold")
+        Text(() => workspaceTitle(w()))
+          .font(14).weight("bold")
           .lineLimit(1).truncation("tail").marquee()
           .color(() => (selected() ? "primary" : "#FFFFFFD9")),
         Spacer({ minLength: 0 }),
         Image("pin.fill")
           .font(8).color("tertiary")
           .opacity(() => (w()?.pinned ? 1 : 0)),
-        Text(() => (w()?.unread > 0 ? String(w().unread) : ""))
-          .font(9).weight("semibold").monospaced().color("white")
-          .paddingHorizontal(() => (w()?.unread > 0 ? 4 : 0))
-          .background(() => (w()?.unread > 0 ? "#FF453A" : null))
-          .cornerRadius(6)
-          .fixedSize()
-          .layoutPriority(2),
+        unreadBlock(w, 9),
       ]),
       HStack({ spacing: 4 }, [
-        when(status, "dot", (a) =>
-          Circle({ size: 6 }).fill(() => STATUS[a().status].color)
-        ),
         Text(subtitle)
           .font(10).color("secondary")
           .lineLimit(1).truncation("middle"),
@@ -431,13 +500,13 @@ function expanded(w) {
 
 function header() {
   return HStack({ spacing: 6 }, [
-    Text("Workspaces").font(11).weight("semibold").color("tertiary").lineLimit(1).fixedSize(),
+    Text("WORKSPACES").font(11).weight("bold").color(LCARS.amber).lineLimit(1).fixedSize(),
     Text(() => String((data.workspaces() ?? []).length))
-      .font(10).monospaced().color("tertiary"),
+      .font(10).monospaced().color(LCARS.peach),
     Spacer(),
     HStack({ spacing: 4 }, [
       Image(() => mode().icon).font(10).color("secondary"),
-      Text(() => mode().label).font(10).color("secondary"),
+      Text(() => mode().label).font(10).color("secondary").lineLimit(1).fixedSize(),
     ])
       .paddingHorizontal(6)
       .paddingVertical(3)

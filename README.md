@@ -31,18 +31,28 @@ cd lcars
 
 ## What it shows
 
-Each workspace is a card:
+Each workspace is a card in LCARS colours, with its own colour bar down the
+left side:
 
-- **Name**, with a pin icon and an unread-notification badge.
-- **Folder and branch**, with a yellow dot when the working tree has
+- **Name**, with a pin icon and a red unread-count readout. A workspace still
+  named after its path shows as its folder, like `orders/`.
+- **Folder and branch**, with a gold dot when the working tree has
   uncommitted changes.
-- **Agent status**: orange *Needs input*, blue *Working* (with how long), or
-  green *Idle*. When a workspace has several agent sessions, each gets its own
-  line.
+- **Agent status**: red *Needs input*, amber *Working* (with how long), or
+  periwinkle *Idle*. When a workspace has several agent sessions, each gets
+  its own line.
 - **Last agent message**.
-- **Terminal tiles**: one per terminal, named after it. The dot shows that
-  terminal's agent status, a red dot marks unread notifications, and the
-  focused terminal is highlighted.
+- **Terminal tiles**: one per terminal, named after it, with the agent's mark
+  in the middle: an orange ✱ for Claude, ▣ for OpenCode, ◆ for anything else.
+  The mark turns while the agent works, fades when it is idle, and the tile
+  gets a red border when it needs input. A red dot marks unread
+  notifications, and the focused terminal is highlighted.
+
+Compact rows show the same marks at the end of the row, on red when the agent
+needs input.
+
+Claude Code doesn't report an interrupted turn (Esc), so a mark keeps turning
+and the card says *Working* until your next prompt.
 
 Click a card to switch to it, click a tile to jump to that terminal, drag
 cards to reorder them, and right-click for pin, mark read, move and close.
