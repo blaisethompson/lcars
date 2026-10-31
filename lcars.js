@@ -9,6 +9,8 @@
 // Use as left sidebar: cmux sidebar select lcars
 
 // LCARS panel colours. Red is kept for alerts: needs input, unread, close.
+// Amber, periwinkle and gold carry status (working, idle, dirty branch), so
+// workspaces are coloured from the rest.
 const LCARS = {
   amber: "#FF9900",
   peach: "#FFCC99",
@@ -24,8 +26,8 @@ const LCARS = {
 };
 
 const PALETTE = [
-  LCARS.amber, LCARS.peach, LCARS.lavender, LCARS.periwinkle, LCARS.salmon,
-  LCARS.ice, LCARS.gold, LCARS.mauve, LCARS.slate, LCARS.tan,
+  LCARS.peach, LCARS.lavender, LCARS.salmon, LCARS.ice, LCARS.mauve,
+  LCARS.slate, LCARS.tan,
 ];
 
 const STATUS = {
@@ -572,23 +574,44 @@ function expanded(w) {
   return !!w?.selected || wantsAttention(w);
 }
 
+// An LCARS header bar: solid colour blocks with black lettering, pill ends
+// on the outside and square ends where blocks meet.
 function header() {
-  return HStack({ spacing: 6 }, [
-    Text("WORKSPACES").font(11).weight("bold").color(LCARS.amber).lineLimit(1).fixedSize(),
-    Text(() => String((data.workspaces() ?? []).length))
-      .font(10).monospaced().color(LCARS.peach),
-    Spacer(),
-    HStack({ spacing: 4 }, [
-      Image(() => mode().icon).font(10).color("secondary"),
-      Text(() => mode().label).font(10).color("secondary").lineLimit(1).fixedSize(),
+  const pill = 9;
+  return HStack({ spacing: 3 }, [
+    // A square block laid over the pill's inner end squares it off.
+    HStack({ spacing: -pill }, [
+      Text("WORKSPACES").font(11).weight("bold").color("black").lineLimit(1)
+        .paddingLeading(10).paddingTrailing(pill).paddingVertical(3)
+        .fixedSize()
+        .background(LCARS.amber)
+        .cornerRadius(pill),
+      Rectangle().fill(LCARS.amber).frame({ width: pill, height: 20 }),
+    ]),
+    Text(() => String((data.workspaces() ?? []).length).padStart(2, "0"))
+      .font(11).weight("bold").monospaced().color("black")
+      .paddingHorizontal(5).paddingVertical(3)
+      .fixedSize()
+      .background(LCARS.peach),
+    Rectangle().fill(LCARS.lavender).frame({ maxWidth: "infinity", height: 20 }),
+    // Here the square block sits under the pill's inner end.
+    HStack({ spacing: -pill }, [
+      Rectangle().fill(LCARS.slate).frame({ width: pill, height: 20 }),
+      HStack({ spacing: 4 }, [
+        Image(() => mode().icon).font(10).weight("bold").color("black"),
+        Text(() => mode().label.toUpperCase()).font(10).weight("bold").color("black")
+          .lineLimit(1).fixedSize(),
+      ])
+        .paddingLeading(pill)
+        .paddingTrailing(10)
+        .paddingVertical(3)
+        .fixedSize()
+        .background(LCARS.slate)
+        .cornerRadius(pill),
     ])
-      .paddingHorizontal(6)
-      .paddingVertical(3)
-      .cornerRadius(5)
-      .hoverBackground("#FFFFFF14")
       .cursor("pointer")
       .onTap(() => setModeIndex((modeIndex() + 1) % MODES.length)),
-  ]).paddingHorizontal(6).paddingVertical(2);
+  ]).frame({ height: 20 }).paddingHorizontal(6).paddingVertical(2);
 }
 
 sidebar(() =>

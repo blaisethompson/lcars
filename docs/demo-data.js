@@ -30,7 +30,7 @@ function demoWorkspaces() {
     },
     {
       id: "search", title: "Search typo tolerance", directory: "~/src/search-service",
-      branch: "feat/typo-tolerance", color: "#FFCC66", unread: 0,
+      branch: "feat/typo-tolerance", color: "#CC9966", unread: 0,
       latestMessage: "Benchmarks are in: p95 went from 41ms to 44ms",
       description: 'lcars-tabs {"ses_fuzzy":"Fuzzy matching","ses_bench":"Benchmark harness"}',
       tabs: [tab("search-1", "OC | Fuzzy matching", { focused: true })],
