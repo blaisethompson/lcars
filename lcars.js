@@ -525,7 +525,8 @@ function card(w) {
         Image("pin.fill").font(9).color(barInk(w, "tertiary")).paddingLeading(6)
       ),
       unreadBlock(w, 10).paddingLeading(() => ((w()?.unread ?? 0) > 0 ? 6 : 0)),
-      shortcutHint(w, 10, barInk(w, "secondary")).paddingLeading(6),
+      shortcutHint(w, 10, barInk(w, "secondary"))
+        .paddingLeading(() => ((w()?.index ?? 9) < 9 ? 6 : 0)),
     ]),
     VStack({ spacing: 4 }, [
       // Folder and branch.
@@ -634,8 +635,8 @@ function closeConfirm(w) {
 // mark in its status colour (black on a red square when it needs input); any
 // other terminal is a smaller square in the workspace tint, centred in the
 // slot. Both are brighter on the workspace's focused tab and dimmer at rest.
-const SLOT = 20;
-const PLAIN = 10;
+const SLOT = 16;
+const PLAIN = 8;
 const MINI_GAP = 2;
 const MINI_REST_OPACITY = 0.5;
 
@@ -653,7 +654,7 @@ function miniTile(w, t) {
       .fill(() => (agent() ? "clear" : tint(accent(w()), focused() ? ALPHA.lit : ALPHA.live)))
       .frame({ width: PLAIN, height: PLAIN }),
     // Large enough to see turn, small enough to fit the slot once turned.
-    markView(agent, 17, () => (needsInput() ? "black" : agent() ? statusOf(agent()).color : "clear"))
+    markView(agent, 14, () => (needsInput() ? "black" : agent() ? statusOf(agent()).color : "clear"))
       .opacity(() => (focused() || needsInput() ? 1 : MINI_REST_OPACITY))
       .rotation(spin(agent)),
   ])
@@ -664,15 +665,14 @@ function miniTile(w, t) {
     .onTap(() => focusTerminal(w, t()?.surfaceId));
 }
 
-// A fixed-width area for the compact minimap: exactly MAX_TILES slots, with
-// the tiles pushed to the right so the last one is always in the same column.
-// When there are more terminals than slots, the last slot holds "+N" (the
-// terminals not shown) instead of a tile, so it is always occupied too.
+// The compact minimap: up to MAX_TILES slots at the right of the second row,
+// so the last slot is always in the same column while rows with fewer
+// terminals leave the rest of the width to the folder and branch. When there
+// are more terminals than slots, the last slot holds "+N" instead of a tile.
 function miniMap(w) {
   const count = () => w()?.tabs?.length ?? 0;
   const extra = () => (count() > MAX_TILES ? count() - (MAX_TILES - 1) : 0);
   return HStack({ spacing: MINI_GAP }, [
-    Spacer({ minLength: 0 }),
     ForEach(
       { items: () => (w()?.tabs ?? []).slice(0, extra() > 0 ? MAX_TILES - 1 : MAX_TILES), key: (t) => t.id },
       (t) => miniTile(w, t)
@@ -684,17 +684,8 @@ function miniMap(w) {
       ])
     ),
   ])
-    .frame({ width: MAX_TILES * SLOT + (MAX_TILES - 1) * MINI_GAP })
+    .fixedSize()
     .layoutPriority(2);
-}
-
-// ⌘ hint in a fixed-width column, so rows without one (index 9 and up) keep
-// their minimap in the same place.
-function hintSlot(w) {
-  return ZStack([
-    Rectangle().fill("clear").frame({ width: 12, height: 12 }),
-    shortcutHint(w, 9),
-  ]).layoutPriority(2);
 }
 
 function compactCard(w) {
@@ -702,37 +693,38 @@ function compactCard(w) {
   const folder = () => basename(w()?.directory);
   const branch = () => (w()?.branch ? w().branch : "");
 
-  return HStack({ spacing: 3 }, [
-    HStack({ spacing: -STRIPE }, [
-      stripe(w, 0),
-      VStack({ spacing: 2 }, [
-        // Pin and unread take no room, gaps included, until they show, so the
-        // name keeps the width.
-        titleBar(w, 13, 18, [
-          when(() => (w()?.pinned ? "pin" : ""), "pin", () =>
-            Image("pin.fill").font(8).color(barInk(w, "tertiary")).paddingLeading(5)
-          ),
-          unreadBlock(w, 9).paddingLeading(() => ((w()?.unread ?? 0) > 0 ? 5 : 0)),
-        ]),
-        // As on a full card, with the folder and branch icons left out for
-        // lack of room; each truncates on its own so neither disappears on a
-        // narrow sidebar.
-        HStack({ spacing: 4 }, [
-          Text(folder)
-            .font(10).monospaced().color("secondary")
-            .lineLimit(1).truncation("tail"),
-          Text(() => (branch() ? "·" : ""))
-            .font(10).monospaced().color("secondary").fixedSize(),
-          Text(branch)
-            .font(10).monospaced().color("secondary")
-            .lineLimit(1).truncation("middle"),
-          Spacer({ minLength: 0 }),
-        ]).paddingLeading(ELBOW_INSET),
+  return HStack({ spacing: -STRIPE }, [
+    stripe(w, 0),
+    VStack({ spacing: 2 }, [
+      // Pin, unread and ⌘ hint take no room, gaps included, until they show,
+      // so the name keeps the width.
+      titleBar(w, 13, 18, [
+        when(() => (w()?.pinned ? "pin" : ""), "pin", () =>
+          Image("pin.fill").font(8).color(barInk(w, "tertiary")).paddingLeading(5)
+        ),
+        unreadBlock(w, 9).paddingLeading(() => ((w()?.unread ?? 0) > 0 ? 5 : 0)),
+        shortcutHint(w, 9, barInk(w, "secondary"))
+          .paddingLeading(() => ((w()?.index ?? 9) < 9 ? 5 : 0)),
       ]),
-    ]),
-    // Minimap and hint, both centred on the row's height.
-    miniMap(w),
-    hintSlot(w),
+      // As on a full card, with the folder and branch icons left out for
+      // lack of room; each truncates on its own so neither disappears on a
+      // narrow sidebar, and the minimap sits at the right end.
+      HStack({ spacing: 4 }, [
+        Text(folder)
+          .font(10).monospaced().color("secondary")
+          .lineLimit(1).truncation("tail"),
+        Text(() => (branch() ? "·" : ""))
+          .font(10).monospaced().color("secondary").fixedSize(),
+        Text(branch)
+          .font(10).monospaced().color("secondary")
+          .lineLimit(1).truncation("middle"),
+        when(() => (branch() && w()?.dirty ? "dirty" : ""), "dirty", () =>
+          Circle({ size: 5 }).fill(LCARS.gold).fixedSize()
+        ),
+        Spacer({ minLength: 0 }),
+        miniMap(w),
+      ]).paddingLeading(ELBOW_INSET),
+    ]).frame({ maxWidth: "infinity" }),
   ])
     .paddingVertical(5)
     .paddingHorizontal(6)

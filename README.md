@@ -59,10 +59,11 @@ periwinkle and gold are kept for status:
   A tile that needs input gets a red border instead of the
   unread dot, and the focused terminal is highlighted.
 
-Compact rows show the name, then folder and branch below it. The
-marks sit at the right in fixed slots, so they line up in columns from row
+Compact rows keep the full-width title bar (with pin, unread count and ⌘
+number hint) and put folder, branch and the terminal marks on the line below.
+The marks sit at the right in fixed slots, so they line up in columns from row
 to row. With more than three terminals the last slot shows "+N" for the ones
-not shown. The ⌘ number hint is aligned after them.
+not shown.
 
 Claude Code doesn't report an interrupted turn (Esc), so cmux keeps such an
 agent *Working* until your next prompt. Agents report on every tool call, so
