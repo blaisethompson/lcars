@@ -221,12 +221,22 @@ function elapsed(since) {
   return h < 24 ? h + "h" : Math.floor(h / 24) + "d";
 }
 
+// Only OpenCode multiplexes tabs inside one terminal. Other agents (such as
+// Antigravity after /clear) leave past contexts in `w.agents` as "idle" on
+// the same `panelId`; `w.agents` is most-recent-first, so keep only the first.
 function liveAgents(w) {
+  const seenPanels = new Set();
   return (w?.agents ?? []).filter((a) => {
     if (!STATUS[a.status]) return false;
-    if (a.kind !== "opencode") return true;
-    const tab = (w?.tabs ?? []).find((t) => t.id === a.panelId);
-    return !tab || OPENCODE_TITLE.test(tab.title ?? "");
+    if (a.kind === "opencode") {
+      const tab = (w?.tabs ?? []).find((t) => t.id === a.panelId);
+      return !tab || OPENCODE_TITLE.test(tab.title ?? "");
+    }
+    if (a.panelId) {
+      if (seenPanels.has(a.panelId)) return false;
+      seenPanels.add(a.panelId);
+    }
+    return true;
   });
 }
 
