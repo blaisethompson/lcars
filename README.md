@@ -42,6 +42,8 @@ periwinkle and gold are kept for status:
 
 - **Name**, with a pin icon when pinned and a red unread-count readout. A
   workspace still named after its path shows as its folder, like `orders/`.
+  On the selected workspace the colour bar turns across the top of the card,
+  an LCARS elbow, with the name, pin, unread count and ⌘ number on it.
 - **Folder and branch**, the branch in grey, with a gold dot when
   the working tree has uncommitted changes.
 - **Agent status**: every live agent session gets its own row, even when

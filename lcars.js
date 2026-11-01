@@ -437,29 +437,53 @@ function unreadBlock(w, size) {
 }
 
 // ⌘1–⌘9 select the first nine workspaces; show which is which.
-function shortcutHint(w, size) {
+function shortcutHint(w, size, color = "secondary") {
   const i = () => w()?.index ?? 9;
   return Text(() => (i() < 9 ? "⌘" + (i() + 1) : ""))
-    .font(size).monospaced().color("secondary")
+    .font(size).monospaced().color(color)
     .lineLimit(1).fixedSize().layoutPriority(2);
 }
 
 
-// The workspace name, laid over the top of the stripe. When selected the
-// stripe turns right behind it, an LCARS elbow, with the name in black (or
-// white on a dark colour); the lettering stays in line with the rows below
-// either way.
-function elbowTitle(w, size, pad) {
+// The workspace's title bar, laid over the top of the stripe: its name, then
+// `trailing` (pin, unread, ⌘ hint) at the far end. When selected the stripe
+// turns right behind it and runs the full width, an LCARS elbow, with
+// everything in black (or white on a dark colour) and a pill end at the
+// right. The lettering stays in line with the rows below either way.
+//
+// The bar is a pill, `height` tall, with a small rounded block laid over its
+// left end so the elbow's outer corner keeps ELBOW_RADIUS. An invisible strut
+// sets the height, as in barBlock, and the text has no padding of its own, so
+// the bar is exactly `height` and the block matches it.
+function titleBar(w, size, height, trailing) {
   const selected = () => !!w()?.selected;
-  return Text(() => workspaceTitle(w()))
-    .font(size).weight("bold").monospaced()
-    .lineLimit(1).truncation("tail").marquee()
-    .color(() => (selected() ? inkOn(accent(w())) : tint(WHITE, ALPHA.strong)))
-    .paddingLeading(ELBOW_INSET)
-    .paddingTrailing(() => (selected() ? 7 : 0))
-    .paddingVertical(pad)
-    .background(() => (selected() ? accent(w()) : null))
-    .cornerRadius(ELBOW_RADIUS);
+  const fill = () => (selected() ? accent(w()) : "clear");
+  const cap = height / 2;
+  const corner = RoundedRectangle({ cornerRadius: ELBOW_RADIUS })
+    .fill(fill)
+    .frame({ width: 3 * cap, height });
+  const pill = HStack({ spacing: 0 }, [
+    Rectangle().fill("clear").frame({ width: 0, height }),
+    Text(() => workspaceTitle(w()))
+      .font(size).weight("bold").monospaced()
+      .lineLimit(1).truncation("tail").marquee()
+      .color(() => (selected() ? inkOn(accent(w())) : tint(WHITE, ALPHA.strong))),
+    Spacer({ minLength: 0 }),
+    ...trailing,
+  ])
+    .paddingLeading(ELBOW_INSET - cap)
+    .paddingTrailing(() => (selected() ? cap - 2 : 0))
+    .frame({ maxWidth: "infinity" })
+    .background(fill)
+    .cornerRadius(cap);
+  // The block reaches past the pill's round end, so its own rounded right
+  // corners sit under the pill's straight edge and leave no notch.
+  return HStack({ spacing: -2 * cap }, [corner, pill]);
+}
+
+// Ink for the pin and ⌘ hint: on the bar when selected, `rest` otherwise.
+function barInk(w, rest) {
+  return () => (w()?.selected ? inkOn(accent(w())) : rest);
 }
 
 
@@ -496,14 +520,12 @@ function card(w) {
 
   const body = VStack({ spacing: 4 }, [
     // Title row: name, then pin / unread badge.
-    HStack({ spacing: 6 }, [
-      elbowTitle(w, 15, 2),
-      Spacer({ minLength: 0 }),
+    titleBar(w, 15, 22, [
       when(() => (w()?.pinned ? "pin" : ""), "pin", () =>
-        Image("pin.fill").font(9).color("tertiary")
+        Image("pin.fill").font(9).color(barInk(w, "tertiary")).paddingLeading(6)
       ),
-      unreadBlock(w, 10),
-      shortcutHint(w, 10),
+      unreadBlock(w, 10).paddingLeading(() => ((w()?.unread ?? 0) > 0 ? 6 : 0)),
+      shortcutHint(w, 10, barInk(w, "secondary")).paddingLeading(6),
     ]),
     VStack({ spacing: 4 }, [
       // Folder and branch.
@@ -686,11 +708,9 @@ function compactCard(w) {
       VStack({ spacing: 2 }, [
         // Pin and unread take no room, gaps included, until they show, so the
         // name keeps the width.
-        HStack({ spacing: 0 }, [
-          elbowTitle(w, 13, 1),
-          Spacer({ minLength: 0 }),
+        titleBar(w, 13, 18, [
           when(() => (w()?.pinned ? "pin" : ""), "pin", () =>
-            Image("pin.fill").font(8).color("tertiary").paddingLeading(5)
+            Image("pin.fill").font(8).color(barInk(w, "tertiary")).paddingLeading(5)
           ),
           unreadBlock(w, 9).paddingLeading(() => ((w()?.unread ?? 0) > 0 ? 5 : 0)),
         ]),
