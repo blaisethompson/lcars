@@ -484,7 +484,11 @@ function titleBar(w, size, height, trailing) {
         placeholder: "Workspace name",
         onSubmit: (nextTitle) => {
           const title = (nextTitle ?? "").trim();
-          if (title) cmux("workspace.action", { action: "rename", workspace_id: w().id, title });
+          // The field starts from the current title, which may be cmux's
+          // automatic one; submitting it untouched must not freeze it as a
+          // custom name.
+          if (title && title === (w()?.title ?? "").trim()) setRenaming(null);
+          else if (title) cmux("workspace.action", { action: "rename", workspace_id: w().id, title });
           else cmux("workspace.action", { action: "clear_name", workspace_id: w().id });
           setRenaming(null);
         },
@@ -873,12 +877,21 @@ function openAreaMenu() {
 // The sidebar sits inside a vertical ScrollView, where a Spacer collapses,
 // so the open space below the cards is a transparent shape tall enough to
 // reach the bottom of the window and catch right-clicks for "New Workspace".
+// cmux gives sidebars no viewport size, so these are estimates: the window
+// height to fill, the header and padding above the cards, and a card's height
+// compact and expanded. Past the window height the area keeps a floor of
+// OPEN_AREA_MIN, which at worst adds a little scroll.
+const WINDOW_HEIGHT = 900;
+const HEADER_SPACE = 40;
+const CARD_HEIGHT = { compact: 42, full: 110 };
+const OPEN_AREA_MIN = 120;
+
 function openAreaHeight() {
-  let used = 40;
+  let used = HEADER_SPACE;
   for (const w of data.workspaces() ?? []) {
-    used += expanded(w) ? 110 : 42;
+    used += expanded(w) ? CARD_HEIGHT.full : CARD_HEIGHT.compact;
   }
-  return Math.max(120, 900 - used);
+  return Math.max(OPEN_AREA_MIN, WINDOW_HEIGHT - used);
 }
 
 sidebar(() =>
