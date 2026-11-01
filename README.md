@@ -4,7 +4,9 @@ A custom sidebar for [cmux](https://cmux.com) that shows every workspace as a
 card: its name, folder and git branch, what its coding agents are doing, and a
 row of tiles for its terminals. Workspaces that need you expand on their own.
 
-<img src="docs/needs-input.png" alt="lcars with an agent waiting for input" width="420">
+<img src="docs/lcars-theme.png" alt="cmux with the lcars sidebar and the LCARS terminal theme" width="720">
+
+*The terminal colours come from the optional [terminal theme](#terminal-theme-optional).*
 
 ## Install
 
@@ -63,6 +65,8 @@ after two minutes without a report lcars stops the mark turning and shows
 *Quiet 2m* in dimmer amber. It never calls the agent idle, because a long
 build or a long reply is silent too; the mark turns again at the next tool
 call.
+
+<img src="docs/needs-input.png" alt="lcars with an agent waiting for input" width="420">
 
 Click a card to switch to it, click a tile to jump to that terminal, drag
 cards to reorder them, and right-click for pin, mark read, move and close.
