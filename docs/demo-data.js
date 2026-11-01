@@ -23,14 +23,14 @@ function demoWorkspaces() {
     },
     {
       id: "onboarding", title: "Onboarding crash fix", directory: "~/src/mobile-app",
-      branch: "fix/onboarding-crash", dirty: true, color: "#FF9966", unread: 1,
+      branch: "fix/onboarding-crash", dirty: true, color: "#66CCCC", unread: 1,
       latestMessage: "Should I keep the old migration path for users on 3.x?",
       tabs: [tab("onboarding-1", "claude", { focused: true, hasUnread: true })],
       agents: [agent("c2", "claude", "Claude", "needs_input", "onboarding-1", 64)],
     },
     {
       id: "search", title: "Search typo tolerance", directory: "~/src/search-service",
-      branch: "feat/typo-tolerance", color: "#CC9966", unread: 0,
+      branch: "feat/typo-tolerance", color: "#99CC99", unread: 0,
       latestMessage: "Benchmarks are in: p95 went from 41ms to 44ms",
       description: 'lcars-tabs {"ses_fuzzy":"Fuzzy matching","ses_bench":"Benchmark harness"}',
       tabs: [tab("search-1", "OC | Fuzzy matching", { focused: true })],
@@ -47,7 +47,7 @@ function demoWorkspaces() {
     },
     {
       id: "postgres", title: "Postgres 17 upgrade", directory: "~/src/infra",
-      branch: "upgrade/postgres-17", color: "#9999CC", unread: 0,
+      branch: "upgrade/postgres-17", color: "#99CCFF", unread: 0,
       tabs: [tab("pg-1", "psql", { focused: true }), tab("pg-2", "terraform"), tab("pg-3", "logs")],
     },
     {

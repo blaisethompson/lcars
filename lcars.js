@@ -8,26 +8,33 @@
 // Open as a pane:      cmux sidebar open lcars
 // Use as left sidebar: cmux sidebar select lcars
 
-// LCARS panel colours. Red is kept for alerts: needs input, unread, close.
-// Amber, periwinkle and gold carry status (working, idle, dirty branch), so
-// workspaces are coloured from the rest.
+// ---------------------------------------------------------------------------
+// Palette and constants
+// ---------------------------------------------------------------------------
+
+// LCARS panel colours. Colour means status, and shape means which agent:
+// amber is working, periwinkle idle, red needs input (also unread and close),
+// and gold marks a branch with uncommitted changes. Those four are reserved
+// for that, so workspaces are coloured only from PALETTE, which keeps clear
+// of them. The header blocks are chrome, not data, and may use any colour.
 const LCARS = {
   amber: "#FF9900",
   peach: "#FFCC99",
   lavender: "#CC99CC",
   periwinkle: "#9999FF",
-  salmon: "#FF9966",
   ice: "#99CCFF",
   gold: "#FFCC66",
   mauve: "#CC6699",
   slate: "#9999CC",
-  tan: "#CC9966",
+  teal: "#66CCCC",
+  sage: "#99CC99",
   red: "#FF5555",
 };
 
+// Workspace colours. Left out on purpose: peach (too close to gold), salmon
+// and tan (too close to amber) and slate (too close to periwinkle).
 const PALETTE = [
-  LCARS.peach, LCARS.lavender, LCARS.salmon, LCARS.ice, LCARS.mauve,
-  LCARS.slate, LCARS.tan,
+  LCARS.lavender, LCARS.ice, LCARS.mauve, LCARS.teal, LCARS.sage,
 ];
 
 const STATUS = {
@@ -36,28 +43,95 @@ const STATUS = {
   idle: { label: "Idle", color: LCARS.periwinkle, rank: 1 },
 };
 
-// Each agent keeps its own mark and colour; its state shows as strength
-// (faded when idle) and a red tile border when it needs input.
+// The mark's shape says which agent it is; its colour says what the agent is
+// doing (STATUS[...].color), so the mark, the status dot and the status text
+// always agree. A tile also gets a red border when its agent needs input.
 // `step` is the glyph's symmetry angle: a working mark turns one step per
 // clock tick, so it always comes to rest looking upright.
 const AGENTS = {
-  claude: { glyph: "✱", color: LCARS.amber, step: 60 },
-  opencode: { glyph: "▣", color: LCARS.ice, step: 90 },
+  claude: { glyph: "✱", step: 60 },
+  opencode: { glyph: "▣", step: 90 },
 };
-const OTHER_AGENT = { glyph: "◆", color: LCARS.peach, step: 90 };
+const OTHER_AGENT = { glyph: "◆", step: 90 };
 const agentMark = (a) => AGENTS[a?.kind] ?? OTHER_AGENT;
+
+// An idle mark is already periwinkle, so it only needs a little softening to
+// sit back from working and needs-input marks; any lower and it is hard to read.
+const IDLE_OPACITY = 0.75;
 
 // Claude Code doesn't report an interrupted turn, so an agent can stay
 // "working" until the next prompt. Hooks fire on every tool call, so a
-// working agent that has been silent this long is shown as quiet: its mark
-// stops turning, but it is never called idle, since a long build or a long
-// reply is silent too.
+// working agent that has been silent this long is shown as quiet: dimmer
+// amber, and its mark stops turning, but it is never called idle, since a
+// long build or a long reply is silent too.
 const QUIET_AFTER = 120;
+
+// cmux never hears that OpenCode quit, so its sessions stay "idle" after
+// the terminal is back at a shell. OpenCode titles its terminal "OC | …"
+// while it runs; hide its sessions in a terminal that no longer says so.
+const OPENCODE_TITLE = /^OC \||opencode/i;
+
+// lcars's OpenCode plugin patch keeps each open tab's name in the workspace
+// description as "lcars-tabs {sessionID: title}". lcars never shows the
+// description, so the map stays out of sight.
+const TAB_NAMES_MARK = "lcars-tabs ";
+
+const MAX_TILES = 3;
+
+// A workspace's colour stripe, and the gap from it to the text.
+const STRIPE = 6;
+const ELBOW_INSET = STRIPE + 8;
+const ELBOW_RADIUS = 5;
+
+// Radius of an LCARS pill end, and the height of the header blocks.
+const BAR = 20;
+const PILL = BAR / 2;
+
+const WHITE = "#FFFFFF";
+
+// Typeface rule: monospaced for readouts and data (header, counts, ages,
+// hints, branches, tile labels), the system font for names and prose
+// (workspace titles, folders, session labels, status, messages).
+
+// Alpha suffixes for `tint`, named by where they are used.
+const ALPHA = {
+  faint: "0A",   // resting hover on a card
+  row: "0F",     // hover on a session row
+  wash: "1F",    // selected card, close bar, button fill
+  rest: "21",    // tile in an unfocused terminal
+  focused: "38", // focused tile in an unselected workspace
+  edge: "40",    // tile border
+  hover: "4D",   // tile hover
+  button: "33",  // button hover
+  live: "59",    // live tile; plain mini tile at rest
+  lit: "B3",     // plain mini tile when live
+  ring: "CC",    // ring around a live plain mini tile
+  strong: "D9",  // title lettering, live tile border, close button
+  quiet: "A6",   // amber for a quiet agent: calmer than working
+};
+
+// ---------------------------------------------------------------------------
+// Pure data helpers
+// ---------------------------------------------------------------------------
+
+const epoch = () => data.clock()?.epoch ?? 0;
+const findWorkspace = (id) => (data.workspaces() ?? []).find((x) => x.id === id);
+
+// `color` at one of the ALPHA opacities.
+const tint = (color, alpha) => color + alpha;
 
 function quiet(a) {
   if (a?.status !== "working") return false;
   const last = Math.max(a.lastActivityAt ?? 0, a.sinceEpoch ?? 0);
   return last > 0 && epoch() - last > QUIET_AFTER;
+}
+
+// What to call an agent and which colour to give it. A quiet agent keeps
+// amber, since it may still be working, but at reduced strength.
+function statusOf(a) {
+  if (quiet(a)) return { label: "Quiet", color: tint(LCARS.amber, ALPHA.quiet) };
+  const meta = STATUS[a?.status];
+  return { label: meta?.label ?? "", color: meta?.color ?? "clear" };
 }
 
 // Rotation binding for a tile's mark. There are no timers, so it turns one
@@ -79,17 +153,16 @@ function spin(agent) {
   };
 }
 
-const MAX_TILES = 3;
-
-const epoch = () => data.clock()?.epoch ?? 0;
-const findWorkspace = (id) => (data.workspaces() ?? []).find((x) => x.id === id);
-
 // Renders `view(value)` only while `value()` is truthy.
 function when(value, key, view) {
   return ForEach(
     { items: () => (value() ? [value()] : []), key: () => key },
     (v) => view(v)
   );
+}
+
+function capitalise(s) {
+  return s ? s[0].toUpperCase() + s.slice(1) : "";
 }
 
 function basename(path) {
@@ -132,11 +205,6 @@ function elapsed(since) {
   return h < 24 ? h + "h" : Math.floor(h / 24) + "d";
 }
 
-// cmux never hears that OpenCode quit, so its sessions stay "idle" after
-// the terminal is back at a shell. OpenCode titles its terminal "OC | …"
-// while it runs; hide its sessions in a terminal that no longer says so.
-const OPENCODE_TITLE = /^OC \||opencode/i;
-
 function liveAgents(w) {
   return (w?.agents ?? []).filter((a) => {
     if (!STATUS[a.status]) return false;
@@ -146,98 +214,62 @@ function liveAgents(w) {
   });
 }
 
-function topAgent(w) {
-  let best = null;
-  for (const a of liveAgents(w)) {
-    if (!best || STATUS[a.status].rank > STATUS[best.status].rank) best = a;
-  }
-  return best;
-}
-
 function agentForTab(w, tab) {
   const live = liveAgents(w).filter((a) => a.panelId === tab?.id);
   live.sort((a, b) => STATUS[b.status].rank - STATUS[a.status].rank);
   return live[0] ?? null;
 }
 
-// lcars's OpenCode plugin patch keeps each open tab's name in the workspace
-// description as "lcars-tabs {sessionID: title}". lcars never shows the
-// description, so the map stays out of sight.
-const TAB_NAMES_MARK = "lcars-tabs ";
+// Parsed tab names, kept by description so each is parsed once, however
+// many agents ask. The cache is cleared before it can grow large.
+const tabNameCache = new Map();
 
 function tabNames(w) {
   const d = w?.description ?? "";
   if (!d.startsWith(TAB_NAMES_MARK)) return {};
-  try { return JSON.parse(d.slice(TAB_NAMES_MARK.length)) ?? {}; } catch (e) { return {}; }
+  let names = tabNameCache.get(d);
+  if (!names) {
+    try { names = JSON.parse(d.slice(TAB_NAMES_MARK.length)) ?? {}; } catch (e) { names = {}; }
+    if (tabNameCache.size > 32) tabNameCache.clear();
+    tabNameCache.set(d, names);
+  }
+  return names;
 }
 
 function agentName(w, a) {
   return a.title || tabNames(w)[a.id] || "";
 }
 
-function statusLine(w) {
-  const a = topAgent(w);
-  if (!a) return null;
-  const meta = STATUS[a.status];
-  const since = a.status === "idle" ? null : a.sinceEpoch;
-  return {
-    color: meta.color,
-    text: meta.label + (quiet(a) ? " · " + sessionAge(a) : since ? " · " + elapsed(since) : ""),
-    who: agentName(w, a) || a.name || a.kind || "",
-  };
-}
-
 // One entry per live agent session, labelled with its name when one is known
-// and otherwise by the terminal it runs in. Unnamed OpenCode tabs sharing a
+// and otherwise by the terminal it runs in. A lone session falls back to the
+// agent itself ("Claude") before the terminal, since the terminal's title
+// is often just a path or a command. Unnamed OpenCode tabs sharing a
 // terminal are numbered in a stable order.
 function sessions(w) {
   const live = liveAgents(w).slice().sort((a, b) => (a.id < b.id ? -1 : 1));
   const tabs = w?.tabs ?? [];
   const perPanel = new Map();
   for (const a of live) perPanel.set(a.panelId, (perPanel.get(a.panelId) ?? 0) + 1);
+  const terminals = perPanel.size;
   const seen = new Map();
   return live.map((a) => {
     const tab = tabs.find((t) => t.id === a.panelId);
     const n = (seen.get(a.panelId) ?? 0) + 1;
     seen.set(a.panelId, n);
     const where = tab ? tabLabel(w, tab) : (a.name || a.kind || "agent");
-    const terminals = new Set(live.map((x) => x.panelId)).size;
     let label = where;
     const name = agentName(w, a);
-    if (name) label = terminals > 1 ? name + " · " + where : name;
+    if (!name && live.length === 1) label = a.name || capitalise(a.kind) || where;
+    else if (name) label = terminals > 1 ? name + " · " + where : name;
     else if (perPanel.get(a.panelId) > 1) label = terminals > 1 ? "Tab " + n + " · " + where : "Tab " + n;
     return { key: a.id, agent: a, label };
   });
 }
 
 function sessionAge(a) {
-  if (quiet(a)) return "quiet " + elapsed(Math.max(a.lastActivityAt ?? 0, a.sinceEpoch ?? 0));
+  if (quiet(a)) return elapsed(Math.max(a.lastActivityAt ?? 0, a.sinceEpoch ?? 0));
   if (a.status !== "idle" && a.sinceEpoch) return elapsed(a.sinceEpoch);
   return a.lastActivityAt ? elapsed(a.lastActivityAt) : "";
-}
-
-function sessionRow(w, s) {
-  const meta = () => STATUS[s().agent.status];
-  return HStack({ spacing: 6 }, [
-    Circle({ size: 6 }).fill(() => meta().color),
-    Text(() => s().label)
-      .font(11).color("secondary")
-      .lineLimit(1).truncation("tail"),
-    Spacer({ minLength: 4 }),
-    Text(() => meta().label).font(10).color(() => meta().color).fixedSize(),
-    Text(() => sessionAge(s().agent))
-      .font(10).monospaced().color("tertiary").fixedSize(),
-  ])
-    .paddingHorizontal(4)
-    .paddingVertical(2)
-    .cornerRadius(4)
-    .hoverBackground("#FFFFFF0F")
-    .cursor("pointer")
-    .onTap(() => {
-      const sid = s().agent.surfaceId;
-      if (sid) cmux("surface.focus", { surface_id: sid, workspace_id: w().id });
-      else cmux("workspace.select", { workspace_id: w().id });
-    });
 }
 
 function cleanMessage(text) {
@@ -256,54 +288,116 @@ function workspaceTitle(w) {
 }
 
 function tabLabel(w, t) {
-  const title = (t?.title ?? "").trim();
+  // OpenCode prefixes its titles with "OC | "; the prefix says nothing here.
+  const title = (t?.title ?? "").replace(/^\s*OC\s*\|\s*/, "").trim();
   if (!title) return "terminal";
   if (title.startsWith("~/") || title.startsWith("/")) return basename(title);
   return title;
 }
 
-// A tall tile per terminal: the workspace tint, the agent's ✱ in its status
-// colour in the middle, and the terminal's name across the top.
+function wantsAttention(w) {
+  if (!w) return false;
+  if (w.unread > 0) return true;
+  return liveAgents(w).some((a) => a.status === "needs_input");
+}
+
+function expanded(w) {
+  const m = mode().id;
+  if (m === "full") return true;
+  if (m === "compact") return false;
+  return !!w?.selected || wantsAttention(w);
+}
+
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+
+// Sidebars can't show a dialog, and cmux refuses to close a workspace with a
+// running process unless the call is forced. "Close…" asks here instead, and
+// the confirmed close is forced like the built-in sidebar's.
+const [closing, setClosing] = signal(null);
+
+// "auto" expands the selected workspace and any that want attention.
+const MODES = [
+  { id: "auto", label: "Auto", icon: "sparkles" },
+  { id: "compact", label: "List", icon: "list.bullet" },
+  { id: "full", label: "Full", icon: "rectangle.grid.1x2" },
+];
+const [modeIndex, setModeIndex] = signal(0);
+const mode = () => MODES[modeIndex()];
+
+// ---------------------------------------------------------------------------
+// View components
+// ---------------------------------------------------------------------------
+
+// Focus a terminal by its surface; without one, select its workspace.
+function focusTerminal(w, surfaceId) {
+  if (surfaceId) cmux("surface.focus", { surface_id: surfaceId, workspace_id: w().id });
+  else cmux("workspace.select", { workspace_id: w().id });
+}
+
+function sessionRow(w, s) {
+  const meta = () => statusOf(s().agent);
+  return HStack({ spacing: 6 }, [
+    Circle({ size: 6 }).fill(() => meta().color),
+    Text(() => s().label)
+      .font(11).color("secondary")
+      .lineLimit(1).truncation("tail"),
+    Spacer({ minLength: 4 }),
+    Text(() => meta().label).font(10).color(() => meta().color).fixedSize(),
+    Text(() => sessionAge(s().agent))
+      .font(10).monospaced()
+      .color(() => (quiet(s().agent) ? meta().color : "tertiary"))
+      .fixedSize(),
+  ])
+    .paddingHorizontal(4)
+    .paddingVertical(2)
+    .cornerRadius(4)
+    .hoverBackground(tint(WHITE, ALPHA.row))
+    .cursor("pointer")
+    .onTap(() => focusTerminal(w, s().agent.surfaceId));
+}
+
+// A one-line tile (about 24pt tall) per terminal: the agent's mark in its status colour at the
+// leading edge, the terminal's name, then the unread dot. One line keeps the
+// card short. A tile with no agent gives the mark's slot to the name rather
+// than reserving it: tiles sit side by side, not stacked, so there is nothing
+// to line up with, and with three tiles across every character counts.
 function tile(w, t) {
   const agent = () => agentForTab(w(), t());
   const focused = () => !!t()?.focused;
   const live = () => focused() && !!w()?.selected;
-  return VStack({ spacing: 0 }, [
-    HStack({ spacing: 3 }, [
-      Text(() => tabLabel(w(), t()))
-        .font(10)
-        .lineLimit(1)
-        .truncation("tail")
-        .color(() => (live() ? "primary" : "secondary")),
-      Spacer({ minLength: 0 }),
-      Circle({ size: 6 }).fill(() => (t()?.hasUnread ? LCARS.red : "clear")),
-    ]),
+  const needsInput = () => agent()?.status === "needs_input";
+  return HStack({ spacing: 4 }, [
+    // Fixed square, so the label doesn't shift as the mark turns.
+    Text(() => (agent() ? agentMark(agent()).glyph : ""))
+      .font(13).weight("bold")
+      .color(() => (agent() ? statusOf(agent()).color : "clear"))
+      .opacity(() => (agent()?.status === "idle" ? IDLE_OPACITY : 1))
+      .frame(() => ({ width: agent() ? 14 : 0, height: 14 }))
+      .rotation(spin(agent)),
+    Text(() => tabLabel(w(), t()))
+      .font(10).monospaced()
+      .lineLimit(1)
+      .truncation("tail")
+      .color(() => (live() ? "primary" : "secondary")),
     Spacer({ minLength: 0 }),
-    HStack({ spacing: 0 }, [
-      Spacer({ minLength: 0 }),
-      Text(() => (agent() ? agentMark(agent()).glyph : ""))
-        .font(20).weight("bold")
-        .color(() => (agent() ? agentMark(agent()).color : "clear"))
-        .opacity(() => (agent()?.status === "idle" ? 0.4 : 1))
-        .rotation(spin(agent)),
-      Spacer({ minLength: 0 }),
-    ]),
-    Spacer({ minLength: 0 }),
+    // A tile that needs input already has a red border, so no dot there.
+    Circle({ size: 6 }).fill(() => (t()?.hasUnread && !needsInput() ? LCARS.red : "clear")),
   ])
-    .padding(5)
-    .frame({ maxWidth: "infinity", height: 56 })
-    .background(() => accent(w()) + (live() ? "59" : focused() ? "38" : "21"))
+    // Padding sets the height (the 14pt mark slot plus 5 above and below);
+    // a frame height here doesn't stretch an HStack.
+    .paddingHorizontal(6)
+    .paddingVertical(5)
+    .frame({ maxWidth: "infinity" })
+    .background(() => tint(accent(w()), live() ? ALPHA.live : focused() ? ALPHA.focused : ALPHA.rest))
     .borderColor(() =>
-      agent()?.status === "needs_input" ? LCARS.red : accent(w()) + (live() ? "D9" : "40"))
-    .borderWidth(() => (live() || agent()?.status === "needs_input" ? 2 : 1))
+      needsInput() ? LCARS.red : tint(accent(w()), live() ? ALPHA.strong : ALPHA.edge))
+    .borderWidth(() => (live() || needsInput() ? 2 : 1))
     .cornerRadius(6)
-    .hoverBackground(() => accent(w()) + "4D")
+    .hoverBackground(() => tint(accent(w()), ALPHA.hover))
     .cursor("pointer")
-    .onTap(() => {
-      const sid = t()?.surfaceId;
-      if (sid) cmux("surface.focus", { surface_id: sid, workspace_id: w().id });
-      else cmux("workspace.select", { workspace_id: w().id });
-    });
+    .onTap(() => focusTerminal(w, t()?.surfaceId));
 }
 
 // Unread count as an LCARS readout: a squared red block with black digits.
@@ -323,14 +417,10 @@ function unreadBlock(w, size) {
 function shortcutHint(w, size) {
   const i = () => w()?.index ?? 9;
   return Text(() => (i() < 9 ? "⌘" + (i() + 1) : ""))
-    .font(size).monospaced().color("tertiary")
+    .font(size).monospaced().color("secondary")
     .lineLimit(1).fixedSize().layoutPriority(2);
 }
 
-// A workspace's colour stripe, and the gap from it to the text.
-const STRIPE = 6;
-const ELBOW_INSET = STRIPE + 8;
-const ELBOW_RADIUS = 5;
 
 // The workspace name, laid over the top of the stripe. When selected the
 // stripe turns right behind it, an LCARS elbow, with the name in black (or
@@ -341,7 +431,7 @@ function elbowTitle(w, size, pad) {
   return Text(() => workspaceTitle(w()))
     .font(size).weight("bold")
     .lineLimit(1).truncation("tail").marquee()
-    .color(() => (selected() ? inkOn(accent(w())) : "#FFFFFFD9"))
+    .color(() => (selected() ? inkOn(accent(w())) : tint(WHITE, ALPHA.strong)))
     .paddingLeading(ELBOW_INSET)
     .paddingTrailing(() => (selected() ? 7 : 0))
     .paddingVertical(pad)
@@ -349,55 +439,69 @@ function elbowTitle(w, size, pad) {
     .cornerRadius(ELBOW_RADIUS);
 }
 
+
+// The workspace's colour stripe. `topInset` is the gap above it; when the
+// workspace is selected the stripe starts lower, below the elbow's rounded
+// corner, so that shows.
+function stripe(w, topInset) {
+  const selected = () => !!w()?.selected;
+  return RoundedRectangle({ cornerRadius: STRIPE / 2 })
+    .fill(() => accent(w()))
+    .frame({ width: STRIPE })
+    .paddingTop(() => (selected() ? topInset + ELBOW_RADIUS : topInset));
+}
+
+// Minimap: one tile per terminal (up to MAX_TILES), then "+N" for the rest.
+function minimap(w, tileFn, spacing, fontSize) {
+  const extra = () => Math.max(0, (w()?.tabs?.length ?? 0) - MAX_TILES);
+  return HStack({ spacing }, [
+    ForEach(
+      { items: () => (w()?.tabs ?? []).slice(0, MAX_TILES), key: (t) => t.id },
+      (t) => tileFn(w, t)
+    ),
+    when(() => (extra() > 0 ? "+" + extra() : ""), "extra", (n) =>
+      Text(() => n()).font(fontSize).monospaced().color("secondary").fixedSize()
+    ),
+  ]);
+}
+
 function card(w) {
   const selected = () => !!w()?.selected;
   const folder = () => basename(w()?.directory);
   const branch = () => (w()?.branch ? w().branch : "");
   const message = () => cleanMessage(w()?.latestMessage);
-  const extra = () => Math.max(0, (w()?.tabs?.length ?? 0) - MAX_TILES);
 
-  const body = VStack({ spacing: 5 }, [
+  const body = VStack({ spacing: 4 }, [
     // Title row: name, then pin / unread badge.
     HStack({ spacing: 6 }, [
       elbowTitle(w, 16, 2),
       Spacer({ minLength: 0 }),
-      Image("pin.fill")
-        .font(9).color("tertiary")
-        .opacity(() => (w()?.pinned ? 1 : 0)),
+      when(() => (w()?.pinned ? "pin" : ""), "pin", () =>
+        Image("pin.fill").font(9).color("tertiary")
+      ),
       unreadBlock(w, 10),
       shortcutHint(w, 10),
     ]),
-    VStack({ spacing: 5 }, [
+    VStack({ spacing: 4 }, [
       // Folder and branch.
       HStack({ spacing: 4 }, [
         Image("folder").font(9).color("tertiary"),
         Text(folder).font(11).color("secondary").lineLimit(1).truncation("tail"),
         Image("arrow.triangle.branch").font(9).color("tertiary")
           .opacity(() => (branch() ? 1 : 0)),
-        Text(branch).font(11).monospaced().color(LCARS.periwinkle)
+        Text(branch).font(11).monospaced().color("secondary")
           .lineLimit(1).truncation("middle"),
         Circle({ size: 5 }).fill(() => (branch() && w()?.dirty ? LCARS.gold : "clear")),
         Spacer({ minLength: 0 }),
       ]),
 
-      // Several live sessions: one line each.
+      // Live agent sessions: one line each.
       VStack({ spacing: 1 }, [
         ForEach(
-          { items: () => { const s = sessions(w()); return s.length > 1 ? s : []; }, key: (s) => s.key },
+          { items: () => sessions(w()), key: (s) => s.key },
           (s) => sessionRow(w, s)
         ),
       ]),
-
-      // A single live session: one status line.
-      when(() => (sessions(w()).length === 1 ? statusLine(w()) : null), "status", (s) =>
-        HStack({ spacing: 5 }, [
-          Circle({ size: 6 }).fill(() => s().color),
-          Text(() => s().text).font(11).weight("medium").color(() => s().color)
-            .lineLimit(1).fixedSize().layoutPriority(2),
-          Text(() => s().who).font(11).color("tertiary").lineLimit(1).truncation("tail"),
-          Spacer({ minLength: 0 }),
-        ])
-      ),
 
       // Last agent message.
       when(message, "message", (m) =>
@@ -408,35 +512,22 @@ function card(w) {
       ),
 
       // Minimap: one tile per terminal.
-      HStack({ spacing: 4 }, [
-        ForEach(
-          { items: () => (w()?.tabs ?? []).slice(0, MAX_TILES), key: (t) => t.id },
-          (t) => tile(w, t)
-        ),
-        when(() => (extra() > 0 ? "+" + extra() : ""), "extra", (n) =>
-          Text(() => n()).font(10).monospaced().color("tertiary").fixedSize()
-        ),
-      ]),
+      minimap(w, tile, 4, 10),
     ]).paddingLeading(ELBOW_INSET),
   ])
-    .paddingVertical(8)
+    .paddingVertical(6)
     .paddingTrailing(6)
     .frame({ maxWidth: "infinity" });
 
   // The body is laid over the stripe so the elbow can grow out of it.
   return HStack({ spacing: -STRIPE }, [
-    RoundedRectangle({ cornerRadius: STRIPE / 2 })
-      .fill(() => accent(w()))
-      .frame({ width: STRIPE })
-      // Under the elbow, start below its rounded corner so that shows.
-      .paddingTop(() => (selected() ? 8 + ELBOW_RADIUS : 8))
-      .paddingBottom(8),
+    stripe(w, 6).paddingBottom(6),
     body,
   ])
     .paddingLeading(6)
     .cornerRadius(8)
-    .background(() => (selected() ? accent(w()) + "1F" : null))
-    .hoverBackground(() => (selected() ? accent(w()) + "1F" : "#FFFFFF0A"))
+    .background(() => (selected() ? tint(accent(w()), ALPHA.wash) : null))
+    .hoverBackground(() => (selected() ? tint(accent(w()), ALPHA.wash) : tint(WHITE, ALPHA.faint)))
     .frame({ maxWidth: "infinity" })
     .onTap(() => cmux("workspace.select", { workspace_id: w().id }))
     .contextMenu(cardMenu(w));
@@ -462,11 +553,6 @@ function cardMenu(w) {
   ];
 }
 
-// Sidebars can't show a dialog, and cmux refuses to close a workspace with a
-// running process unless the call is forced. "Close…" asks here instead, and
-// the confirmed close is forced like the built-in sidebar's.
-const [closing, setClosing] = signal(null);
-
 function closeConfirm(w) {
   const button = (icon, color, fill, hover, onTap) =>
     Image(icon).font(10).weight("bold").color(color)
@@ -485,8 +571,8 @@ function closeConfirm(w) {
       .font(12).weight("semibold")
       .lineLimit(1).truncation("tail"),
     Spacer({ minLength: 4 }),
-    button("arrow.uturn.backward", "secondary", "#FFFFFF1F", "#FFFFFF33", () => setClosing(null)),
-    button("xmark", "white", LCARS.red + "D9", LCARS.red, () => {
+    button("arrow.uturn.backward", "secondary", tint(WHITE, ALPHA.wash), tint(WHITE, ALPHA.button), () => setClosing(null)),
+    button("xmark", "white", tint(LCARS.red, ALPHA.strong), LCARS.red, () => {
       setClosing(null);
       cmux("workspace.close", { workspace_id: w().id, force: true });
     }),
@@ -494,173 +580,239 @@ function closeConfirm(w) {
     .paddingVertical(5)
     .paddingHorizontal(6)
     .cornerRadius(7)
-    .background(LCARS.red + "1F")
+    .background(tint(LCARS.red, ALPHA.wash))
     .frame({ maxWidth: "infinity" });
 }
 
-// Compact minimap: a terminal running an agent shows that agent's mark on
-// the row itself (faded when idle, on red when it needs input); any other
-// terminal is a small square in the workspace tint.
+// Compact minimap tiles all share one square slot, so marks fall in the same
+// columns whatever they hold. A terminal running an agent shows that agent's
+// mark in its status colour (a little softer when idle, black on a red square
+// when it needs input); any other terminal is a smaller square in the
+// workspace tint, centred in the slot.
+const SLOT = 14;
+const PLAIN = 9;
+const MINI_GAP = 2;
+
 function miniTile(w, t) {
   const agent = () => agentForTab(w(), t());
   const live = () => !!t()?.focused && !!w()?.selected;
   const needsInput = () => agent()?.status === "needs_input";
-  const side = () => (agent() ? 20 : 10);
-  // The shape gives the tile its size; an empty Text alone collapses to
+  // The shapes give the slot its size; an empty Text alone collapses to
   // nothing, which hid plain terminals' squares.
   return ZStack([
     RoundedRectangle({ cornerRadius: 3 })
-      .fill(() =>
-        needsInput() ? LCARS.red
-          : agent() ? "clear"
-          : accent(w()) + (live() ? "B3" : "59"))
-      .frame(() => ({ width: side(), height: side() })),
+      .fill(() => (needsInput() ? LCARS.red : "clear"))
+      .frame({ width: SLOT, height: SLOT }),
+    RoundedRectangle({ cornerRadius: 2 })
+      .fill(() => (agent() ? "clear" : tint(accent(w()), live() ? ALPHA.lit : ALPHA.live)))
+      .frame({ width: PLAIN, height: PLAIN }),
+    // 11pt, so the glyph still fits the slot once it has turned.
     Text(() => (agent() ? agentMark(agent()).glyph : ""))
-      .font(14).weight("bold")
-      .color(() => (needsInput() ? "black" : agent() ? agentMark(agent()).color : "clear"))
-      .opacity(() => (agent()?.status === "idle" ? 0.4 : 1))
+      .font(11).weight("bold")
+      .color(() => (needsInput() ? "black" : agent() ? statusOf(agent()).color : "clear"))
+      .opacity(() => (agent()?.status === "idle" ? IDLE_OPACITY : 1))
       .rotation(spin(agent)),
   ])
     .borderColor(() =>
-      t()?.hasUnread ? LCARS.red : live() && !agent() ? "#FFFFFFCC" : "clear")
+      t()?.hasUnread ? LCARS.red : live() && !agent() ? tint(WHITE, ALPHA.ring) : "clear")
     .borderWidth(1)
     .cornerRadius(3)
     .cursor("pointer")
-    .onTap(() => {
-      const sid = t()?.surfaceId;
-      if (sid) cmux("surface.focus", { surface_id: sid, workspace_id: w().id });
-      else cmux("workspace.select", { workspace_id: w().id });
-    });
+    .onTap(() => focusTerminal(w, t()?.surfaceId));
+}
+
+// A fixed-width area for the compact minimap: exactly MAX_TILES slots, with
+// the tiles pushed to the right so the last one is always in the same column.
+// When there are more terminals than slots, the last slot holds "+N" (the
+// terminals not shown) instead of a tile, so it is always occupied too.
+function miniMap(w) {
+  const count = () => w()?.tabs?.length ?? 0;
+  const extra = () => (count() > MAX_TILES ? count() - (MAX_TILES - 1) : 0);
+  return HStack({ spacing: MINI_GAP }, [
+    Spacer({ minLength: 0 }),
+    ForEach(
+      { items: () => (w()?.tabs ?? []).slice(0, extra() > 0 ? MAX_TILES - 1 : MAX_TILES), key: (t) => t.id },
+      (t) => miniTile(w, t)
+    ),
+    when(() => (extra() > 0 ? "+" + extra() : ""), "extra", (n) =>
+      ZStack([
+        Rectangle().fill("clear").frame({ width: SLOT, height: SLOT }),
+        Text(() => n()).font(9).monospaced().color("secondary").fixedSize(),
+      ])
+    ),
+  ])
+    .frame({ width: MAX_TILES * SLOT + (MAX_TILES - 1) * MINI_GAP })
+    .layoutPriority(2);
+}
+
+// ⌘ hint in a fixed-width column, so rows without one (index 9 and up) keep
+// their minimap in the same place.
+function hintSlot(w) {
+  return ZStack([
+    Rectangle().fill("clear").frame({ width: 12, height: 12 }),
+    shortcutHint(w, 9),
+  ]).layoutPriority(2);
 }
 
 function compactCard(w) {
   const selected = () => !!w()?.selected;
-  const extra = () => Math.max(0, (w()?.tabs?.length ?? 0) - MAX_TILES);
-  const subtitle = () => {
-    const folder = basename(w()?.directory);
-    return w()?.branch ? folder + " · " + w().branch : folder;
-  };
+  const folder = () => basename(w()?.directory);
+  const branch = () => (w()?.branch ? w().branch : "");
 
-  return HStack({ spacing: 8 }, [
+  return HStack({ spacing: 3 }, [
     HStack({ spacing: -STRIPE }, [
-      RoundedRectangle({ cornerRadius: STRIPE / 2 })
-        .fill(() => accent(w()))
-        .frame({ width: STRIPE })
-        .paddingTop(() => (selected() ? ELBOW_RADIUS : 0)),
+      stripe(w, 0),
       VStack({ spacing: 2 }, [
-        HStack({ spacing: 5 }, [
+        // Pin and unread take no room, gaps included, until they show, so the
+        // name keeps the width.
+        HStack({ spacing: 0 }, [
           elbowTitle(w, 14, 1),
           Spacer({ minLength: 0 }),
-          Image("pin.fill")
-            .font(8).color("tertiary")
-            .opacity(() => (w()?.pinned ? 1 : 0)),
-          unreadBlock(w, 9),
+          when(() => (w()?.pinned ? "pin" : ""), "pin", () =>
+            Image("pin.fill").font(8).color("tertiary").paddingLeading(5)
+          ),
+          unreadBlock(w, 9).paddingLeading(() => ((w()?.unread ?? 0) > 0 ? 5 : 0)),
         ]),
+        // As on a full card, with the folder and branch icons left out for
+        // lack of room: the branch is monospaced, and each truncates on its
+        // own so neither disappears on a narrow sidebar.
         HStack({ spacing: 4 }, [
-          Text(subtitle)
+          Text(folder)
             .font(10).color("secondary")
+            .lineLimit(1).truncation("tail"),
+          Text(() => (branch() ? "·" : ""))
+            .font(10).color("secondary").fixedSize(),
+          Text(branch)
+            .font(10).monospaced().color("secondary")
             .lineLimit(1).truncation("middle"),
           Spacer({ minLength: 0 }),
         ]).paddingLeading(ELBOW_INSET),
       ]),
     ]),
-    // Minimap, centred on the row's height.
-    HStack({ spacing: 3 }, [
-      ForEach(
-        { items: () => (w()?.tabs ?? []).slice(0, MAX_TILES), key: (t) => t.id },
-        (t) => miniTile(w, t)
-      ),
-      when(() => (extra() > 0 ? "+" + extra() : ""), "extra", (n) =>
-        Text(() => n()).font(9).monospaced().color("tertiary").fixedSize()
-      ),
-    ]).fixedSize().layoutPriority(2),
-    // At the right edge, level with the name, so it lines up from row to row.
-    VStack({ spacing: 0 }, [shortcutHint(w, 9), Spacer({ minLength: 0 })])
-      .frame({ height: 26 }),
+    // Minimap and hint, both centred on the row's height.
+    miniMap(w),
+    hintSlot(w),
   ])
     .paddingVertical(5)
     .paddingHorizontal(6)
     .cornerRadius(7)
-    .background(() => (selected() ? accent(w()) + "1F" : null))
-    .hoverBackground(() => (selected() ? accent(w()) + "1F" : "#FFFFFF0A"))
+    .background(() => (selected() ? tint(accent(w()), ALPHA.wash) : null))
+    .hoverBackground(() => (selected() ? tint(accent(w()), ALPHA.wash) : tint(WHITE, ALPHA.faint)))
     .frame({ maxWidth: "infinity" })
     .onTap(() => cmux("workspace.select", { workspace_id: w().id }))
     .contextMenu(cardMenu(w));
 }
 
-// "auto" expands the selected workspace and any that want attention.
-const MODES = [
-  { id: "auto", label: "Auto", icon: "sparkles" },
-  { id: "compact", label: "Compact", icon: "list.bullet" },
-  { id: "full", label: "Full", icon: "rectangle.grid.1x2" },
-];
-const [modeIndex, setModeIndex] = signal(0);
-const mode = () => MODES[modeIndex()];
-
-function wantsAttention(w) {
-  if (!w) return false;
-  if (w.unread > 0) return true;
-  return liveAgents(w).some((a) => a.status === "needs_input");
+// Every header block is exactly the bar's height, so the edges run straight
+// across where blocks meet; padding around the text alone leaves them a point
+// or two short of the bar. A frame height on text is ignored, so an invisible
+// zero-width strut, which as a shape does keep its frame, sets the height.
+function barBlock(content, fill) {
+  return HStack({ spacing: 0 }, [
+    Rectangle().fill("clear").frame({ width: 0, height: BAR }),
+    content,
+  ]).background(fill);
 }
 
-function expanded(w) {
-  const m = mode().id;
-  if (m === "full") return true;
-  if (m === "compact") return false;
-  return !!w?.selected || wantsAttention(w);
+// An LCARS block in `fill`: a pill-ended `content`, with a square block laid
+// over one inner end to square it off. `squareFirst` puts the square at the
+// left, where the block meets the bar; otherwise it ends the block at the right.
+function pillBlock(fill, content, squareFirst) {
+  const square = Rectangle().fill(fill).frame({ width: PILL, height: BAR });
+  const pill = barBlock(content, fill).cornerRadius(PILL);
+  return HStack({ spacing: -PILL }, squareFirst ? [square, pill] : [pill, square]);
 }
 
 // The mode button as an LCARS block in `fill`: square at the left, where
 // it meets the bar, and a pill end at the right.
 function modeBlock(fill) {
-  const pill = 9;
-  return HStack({ spacing: -pill }, [
-    Rectangle().fill(fill).frame({ width: pill, height: 20 }),
+  return pillBlock(fill,
     HStack({ spacing: 4 }, [
       Image(() => mode().icon).font(10).weight("bold").color("black"),
-      Text(() => mode().label.toUpperCase()).font(10).weight("bold").color("black")
+      Text(() => mode().label.toUpperCase()).font(10).weight("bold").monospaced().color("black")
         .lineLimit(1).fixedSize(),
     ])
-      .paddingLeading(pill)
+      .paddingLeading(PILL)
       .paddingTrailing(10)
-      .paddingVertical(3)
-      .fixedSize()
-      .background(fill)
-      .cornerRadius(pill),
-  ]);
+      .fixedSize(),
+    true);
+}
+
+// Live agents across every workspace with `status`; quiet agents are left out, so
+// "working" means working right now.
+function agentCount(status) {
+  let n = 0;
+  for (const w of data.workspaces() ?? []) {
+    for (const a of liveAgents(w)) {
+      if (a.status === status && !quiet(a)) n += 1;
+    }
+  }
+  return n;
+}
+
+// A header readout like the count block: black bold digits on solid colour,
+// square ends, with a small SF Symbol ahead of them so it isn't just a number.
+// The symbol is an Image, not a character in the string, because a font's ▶
+// sits off the digits' centre line; an Image is centred on them. Absent (no
+// block, no gap) while the count is zero.
+function readoutBlock(count, icon, fill, onTap) {
+  return when(() => (count() > 0 ? count() : 0), icon, (n) => {
+    const block = HStack({ spacing: 2 }, [
+      Image(icon).font(7).weight("bold").color("black"),
+      Text(() => String(n()).padStart(2, "0"))
+        .font(11).weight("bold").monospaced().color("black")
+        .lineLimit(1),
+    ])
+      .paddingHorizontal(5)
+      .fixedSize();
+    const filled = barBlock(block, fill);
+    return onTap ? filled.cursor("pointer").onTap(onTap) : filled;
+  });
+}
+
+// Jump to the first workspace with an agent waiting on the user.
+function selectNeedsInput() {
+  const w = (data.workspaces() ?? []).find((x) =>
+    liveAgents(x).some((a) => a.status === "needs_input"));
+  if (w) cmux("workspace.select", { workspace_id: w.id });
 }
 
 // An LCARS header bar: solid colour blocks with black lettering, pill ends
 // on the outside and square ends where blocks meet.
 function header() {
-  const pill = 9;
   return HStack({ spacing: 3 }, [
-    // A square block laid over the pill's inner end squares it off.
-    HStack({ spacing: -pill }, [
-      Text("WORKSPACES").font(11).weight("bold").color("black").lineLimit(1)
-        .paddingLeading(10).paddingTrailing(pill).paddingVertical(3)
-        .fixedSize()
-        .background(LCARS.amber)
-        .cornerRadius(pill),
-      Rectangle().fill(LCARS.amber).frame({ width: pill, height: 20 }),
-    ]),
-    Text(() => String((data.workspaces() ?? []).length).padStart(2, "0"))
-      .font(11).weight("bold").monospaced().color("black")
-      .paddingHorizontal(5).paddingVertical(3)
-      .fixedSize()
-      .background(LCARS.peach),
-    Rectangle().fill(LCARS.lavender).frame({ maxWidth: "infinity", height: 20 }),
+    pillBlock(LCARS.amber,
+      Text("WORKSPACES").font(11).weight("bold").monospaced().color("black").lineLimit(1)
+        .paddingLeading(10).paddingTrailing(PILL)
+        .fixedSize(),
+      false),
+    barBlock(
+      Text(() => String((data.workspaces() ?? []).length).padStart(2, "0"))
+        .font(11).weight("bold").monospaced().color("black")
+        .paddingHorizontal(5)
+        .fixedSize(),
+      LCARS.peach),
+    // Needs-input and working readouts, each only while there are any; the
+    // lavender filler gives up the room, so the mode button is never squeezed.
+    readoutBlock(() => agentCount("needs_input"), "exclamationmark", LCARS.red, selectNeedsInput),
+    readoutBlock(() => agentCount("working"), "play.fill", LCARS.amber, null),
+    Rectangle().fill(LCARS.lavender).frame({ maxWidth: "infinity", height: BAR }),
     // The lit copy shows on hover. A square block under each pill's inner
     // end squares it off, so it is drawn in the same colour as the pill.
     ZStack({}, [modeBlock(LCARS.slate), modeBlock(LCARS.periwinkle).showOnHover()])
       .cursor("pointer")
       .onTap(() => setModeIndex((modeIndex() + 1) % MODES.length)),
-  ]).frame({ height: 20 }).paddingHorizontal(6).paddingVertical(2);
+  ]).frame({ height: BAR }).paddingHorizontal(6).paddingVertical(2);
 }
 
 sidebar(() =>
   VStack({ spacing: 4 }, [
     header(),
+    when(() => ((data.workspaces() ?? []).length === 0 ? "none" : ""), "empty", () =>
+      Text("NO WORKSPACES")
+        .font(10).weight("bold").monospaced().color("tertiary")
+        .paddingHorizontal(10).paddingVertical(4)
+    ),
     Reorderable(
       {
         items: () => data.workspaces() ?? [],

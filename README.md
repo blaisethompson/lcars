@@ -31,31 +31,37 @@ cd lcars
 
 ## What it shows
 
-Each workspace is a card in LCARS colours, with its own colour bar down the
-left side:
+Each workspace is a card with its own colour bar down the left side: the
+colour you set in cmux, or else lavender, ice, mauve, teal or sage. Red, amber,
+periwinkle and gold are kept for status:
 
-- **Name**, with a pin icon and a red unread-count readout. A workspace still
-  named after its path shows as its folder, like `orders/`.
-- **Folder and branch**, with a gold dot when the working tree has
-  uncommitted changes.
-- **Agent status**: red *Needs input*, amber *Working* (with how long), or
-  periwinkle *Idle*. When a workspace has several agent sessions, each gets
-  its own line.
+- **Name**, with a pin icon when pinned and a red unread-count readout. A
+  workspace still named after its path shows as its folder, like `orders/`.
+- **Folder and branch**, the branch in grey monospace, with a gold dot when
+  the working tree has uncommitted changes.
+- **Agent status**: every live agent session gets its own row, even when
+  there is only one: a dot, its name, then its status and age on the right.
+  The colour is the status: red *Needs input*, amber *Working*, dimmer amber
+  *Quiet* (see below), periwinkle *Idle*.
 - **Last agent message**.
-- **Terminal tiles**: one per terminal, named after it, with the agent's mark
-  in the middle: an orange ✱ for Claude, ▣ for OpenCode, ◆ for anything else.
-  The mark turns while the agent works, fades when it is idle, and the tile
-  gets a red border when it needs input. A red dot marks unread
-  notifications, and the focused terminal is highlighted.
+- **Terminal tiles**: one line per terminal with the agent's mark, the
+  terminal's name and an unread dot. The shape of the mark says which agent
+  it is: ✱ Claude, ▣ OpenCode, ◆ anything else. Its colour is the status,
+  and it turns while the agent works. OpenCode's "OC | " title prefix is
+  left off the name. A tile that needs input gets a red border instead of the
+  unread dot, and the focused terminal is highlighted.
 
-Compact rows show the same marks at the end of the row, on red when the agent
-needs input.
+Compact rows show the name, then folder and branch (monospace) below it. The
+marks sit at the right in fixed slots, so they line up in columns from row
+to row. With more than three terminals the last slot shows "+N" for the ones
+not shown. The ⌘ number hint is aligned after them.
 
 Claude Code doesn't report an interrupted turn (Esc), so cmux keeps such an
 agent *Working* until your next prompt. Agents report on every tool call, so
 after two minutes without a report lcars stops the mark turning and shows
-*Working · quiet 2m*. It never calls the agent idle, because a long build or
-a long reply is silent too; the mark turns again at the next tool call.
+*Quiet 2m* in dimmer amber. It never calls the agent idle, because a long
+build or a long reply is silent too; the mark turns again at the next tool
+call.
 
 Click a card to switch to it, click a tile to jump to that terminal, drag
 cards to reorder them, and right-click for pin, mark read, move and close.
@@ -65,6 +71,14 @@ the red × closes the workspace. It asks every time because a sidebar can't
 tell whether a workspace has something running, and the confirmed close ends
 any running processes, like closing from cmux's own sidebar.
 
+### Header
+
+The header shows the workspace count, then two readouts that appear only
+while their count is above zero: a red **!NN** for agents needing input
+(click it to jump to the first workspace with one) and an amber **▶NN** for
+agents working right now (quiet ones aren't counted). With no workspaces the
+list reads "NO WORKSPACES".
+
 ### Modes
 
 The button at the top right cycles through:
@@ -72,7 +86,7 @@ The button at the top right cycles through:
 - **Auto** (default): workspaces are compact two-line rows, and the current
   workspace plus any that need you (unread notifications or an agent waiting
   for input) expand into full cards.
-- **Compact**: every workspace is a two-line row.
+- **List**: every workspace is a two-line row.
 - **Full**: every workspace is a full card.
 
 The mode resets to Auto when cmux reloads the sidebar.
