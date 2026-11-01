@@ -37,7 +37,7 @@ periwinkle and gold are kept for status:
 
 - **Name**, with a pin icon when pinned and a red unread-count readout. A
   workspace still named after its path shows as its folder, like `orders/`.
-- **Folder and branch**, the branch in grey monospace, with a gold dot when
+- **Folder and branch**, the branch in grey, with a gold dot when
   the working tree has uncommitted changes.
 - **Agent status**: every live agent session gets its own row, even when
   there is only one: a dot, its name, then its status and age on the right.
@@ -51,7 +51,7 @@ periwinkle and gold are kept for status:
   left off the name. A tile that needs input gets a red border instead of the
   unread dot, and the focused terminal is highlighted.
 
-Compact rows show the name, then folder and branch (monospace) below it. The
+Compact rows show the name, then folder and branch below it. The
 marks sit at the right in fixed slots, so they line up in columns from row
 to row. With more than three terminals the last slot shows "+N" for the ones
 not shown. The ⌘ number hint is aligned after them.

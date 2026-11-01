@@ -89,9 +89,8 @@ const PILL = BAR / 2;
 
 const WHITE = "#FFFFFF";
 
-// Typeface rule: monospaced for readouts and data (header, counts, ages,
-// hints, branches, tile labels), the system font for names and prose
-// (workspace titles, folders, session labels, status, messages).
+// Typeface rule: every word is monospaced, like a console readout. The
+// agent marks are not, so their size and centre don't depend on the font.
 
 // Alpha suffixes for `tint`, named by where they are used.
 const ALPHA = {
@@ -341,10 +340,10 @@ function sessionRow(w, s) {
   return HStack({ spacing: 6 }, [
     Circle({ size: 6 }).fill(() => meta().color),
     Text(() => s().label)
-      .font(11).color("secondary")
+      .font(11).monospaced().color("secondary")
       .lineLimit(1).truncation("tail"),
     Spacer({ minLength: 4 }),
-    Text(() => meta().label).font(10).color(() => meta().color).fixedSize(),
+    Text(() => meta().label).font(10).monospaced().color(() => meta().color).fixedSize(),
     Text(() => sessionAge(s().agent))
       .font(10).monospaced()
       .color(() => (quiet(s().agent) ? meta().color : "tertiary"))
@@ -429,7 +428,7 @@ function shortcutHint(w, size) {
 function elbowTitle(w, size, pad) {
   const selected = () => !!w()?.selected;
   return Text(() => workspaceTitle(w()))
-    .font(size).weight("bold")
+    .font(size).weight("bold").monospaced()
     .lineLimit(1).truncation("tail").marquee()
     .color(() => (selected() ? inkOn(accent(w())) : tint(WHITE, ALPHA.strong)))
     .paddingLeading(ELBOW_INSET)
@@ -474,7 +473,7 @@ function card(w) {
   const body = VStack({ spacing: 4 }, [
     // Title row: name, then pin / unread badge.
     HStack({ spacing: 6 }, [
-      elbowTitle(w, 16, 2),
+      elbowTitle(w, 15, 2),
       Spacer({ minLength: 0 }),
       when(() => (w()?.pinned ? "pin" : ""), "pin", () =>
         Image("pin.fill").font(9).color("tertiary")
@@ -486,7 +485,7 @@ function card(w) {
       // Folder and branch.
       HStack({ spacing: 4 }, [
         Image("folder").font(9).color("tertiary"),
-        Text(folder).font(11).color("secondary").lineLimit(1).truncation("tail"),
+        Text(folder).font(11).monospaced().color("secondary").lineLimit(1).truncation("tail"),
         Image("arrow.triangle.branch").font(9).color("tertiary")
           .opacity(() => (branch() ? 1 : 0)),
         Text(branch).font(11).monospaced().color("secondary")
@@ -506,7 +505,7 @@ function card(w) {
       // Last agent message.
       when(message, "message", (m) =>
         HStack({ spacing: 0 }, [
-          Text(() => m()).font(11).color("secondary").lineLimit(2).truncation("tail"),
+          Text(() => m()).font(11).monospaced().color("secondary").lineLimit(2).truncation("tail"),
           Spacer({ minLength: 0 }),
         ])
       ),
@@ -568,7 +567,7 @@ function closeConfirm(w) {
       .fill(LCARS.red)
       .frame({ width: 6, height: 26 }),
     Text(() => "Close " + workspaceTitle(w()) + "?")
-      .font(12).weight("semibold")
+      .font(12).weight("semibold").monospaced()
       .lineLimit(1).truncation("tail"),
     Spacer({ minLength: 4 }),
     button("arrow.uturn.backward", "secondary", tint(WHITE, ALPHA.wash), tint(WHITE, ALPHA.button), () => setClosing(null)),
@@ -666,7 +665,7 @@ function compactCard(w) {
         // Pin and unread take no room, gaps included, until they show, so the
         // name keeps the width.
         HStack({ spacing: 0 }, [
-          elbowTitle(w, 14, 1),
+          elbowTitle(w, 13, 1),
           Spacer({ minLength: 0 }),
           when(() => (w()?.pinned ? "pin" : ""), "pin", () =>
             Image("pin.fill").font(8).color("tertiary").paddingLeading(5)
@@ -674,14 +673,14 @@ function compactCard(w) {
           unreadBlock(w, 9).paddingLeading(() => ((w()?.unread ?? 0) > 0 ? 5 : 0)),
         ]),
         // As on a full card, with the folder and branch icons left out for
-        // lack of room: the branch is monospaced, and each truncates on its
-        // own so neither disappears on a narrow sidebar.
+        // lack of room; each truncates on its own so neither disappears on a
+        // narrow sidebar.
         HStack({ spacing: 4 }, [
           Text(folder)
-            .font(10).color("secondary")
+            .font(10).monospaced().color("secondary")
             .lineLimit(1).truncation("tail"),
           Text(() => (branch() ? "·" : ""))
-            .font(10).color("secondary").fixedSize(),
+            .font(10).monospaced().color("secondary").fixedSize(),
           Text(branch)
             .font(10).monospaced().color("secondary")
             .lineLimit(1).truncation("middle"),
