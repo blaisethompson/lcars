@@ -51,9 +51,26 @@ const STATUS = {
 const AGENTS = {
   claude: { glyph: "✱", step: 60 },
   opencode: { glyph: "▣", step: 90 },
+  // A ⬢ character sits off its own centre and wobbles as it turns, so
+  // Codex's hexagon is the SF Symbol, which turns about its middle. Symbols
+  // draw larger than these characters, hence the smaller size.
+  codex: { symbol: "hexagon.fill", step: 60, scale: 0.65 },
 };
 const OTHER_AGENT = { glyph: "◆", step: 90 };
 const agentMark = (a) => AGENTS[a?.kind] ?? OTHER_AGENT;
+const markSize = (a, size) => Math.round(size * (agentMark(a).scale ?? 1));
+
+// An agent's mark at `size`: its character, or its SF Symbol when it has one.
+// The two share one rotation, applied by the caller.
+function markView(agent, size, color) {
+  const mark = () => (agent() ? agentMark(agent()) : null);
+  return ZStack({}, [
+    Text(() => (mark() && !mark().symbol ? mark().glyph : ""))
+      .font(size).weight("bold").color(color),
+    when(() => mark()?.symbol ?? null, "symbol", (name) =>
+      Image(() => name()).font(() => markSize(agent(), size)).weight("bold").color(color)),
+  ]);
+}
 
 // An idle mark is already periwinkle, so it only needs a little softening to
 // sit back from working and needs-input marks; any lower and it is hard to read.
@@ -278,17 +295,26 @@ function cleanMessage(text) {
   return t.replace(/\s+/g, " ");
 }
 
-// A workspace still named after its path reads as "folder/".
+// Agents decorate their terminal titles: OpenCode prefixes "OC | ", and
+// Codex animates a braille spinner (⠋ ⠙ ⠹ …) in front while it works. The
+// turning mark already says both, so they are left off wherever a title is shown.
+const cleanTitle = (title) => String(title ?? "")
+  .replace(/^[\s\u2800-\u28FF]+/, "")
+  .replace(/^OC\s*\|\s*/, "")
+  .trim();
+
+// A workspace still named after its path reads as "folder/". A workspace
+// cmux names from its terminal title can carry OpenCode's prefix. The sidebar
+// isn't told whether a title was typed by hand, so the prefix goes either way.
 function workspaceTitle(w) {
-  const title = (w?.title ?? "").trim();
+  const title = cleanTitle(w?.title);
   if (!title) return basename(w?.directory) + "/";
   if (title.startsWith("~/") || title.startsWith("/")) return basename(title) + "/";
   return title;
 }
 
 function tabLabel(w, t) {
-  // OpenCode prefixes its titles with "OC | "; the prefix says nothing here.
-  const title = (t?.title ?? "").replace(/^\s*OC\s*\|\s*/, "").trim();
+  const title = cleanTitle(t?.title);
   if (!title) return "terminal";
   if (title.startsWith("~/") || title.startsWith("/")) return basename(title);
   return title;
@@ -357,7 +383,7 @@ function sessionRow(w, s) {
     .onTap(() => focusTerminal(w, s().agent.surfaceId));
 }
 
-// A one-line tile (about 24pt tall) per terminal: the agent's mark in its status colour at the
+// A one-line tile (about 30pt tall) per terminal: the agent's mark in its status colour at the
 // leading edge, the terminal's name, then the unread dot. One line keeps the
 // card short. A tile with no agent gives the mark's slot to the name rather
 // than reserving it: tiles sit side by side, not stacked, so there is nothing
@@ -369,11 +395,9 @@ function tile(w, t) {
   const needsInput = () => agent()?.status === "needs_input";
   return HStack({ spacing: 4 }, [
     // Fixed square, so the label doesn't shift as the mark turns.
-    Text(() => (agent() ? agentMark(agent()).glyph : ""))
-      .font(13).weight("bold")
-      .color(() => (agent() ? statusOf(agent()).color : "clear"))
+    markView(agent, 17, () => (agent() ? statusOf(agent()).color : "clear"))
       .opacity(() => (agent()?.status === "idle" ? IDLE_OPACITY : 1))
-      .frame(() => ({ width: agent() ? 14 : 0, height: 14 }))
+      .frame(() => ({ width: agent() ? 20 : 0, height: 20 }))
       .rotation(spin(agent)),
     Text(() => tabLabel(w(), t()))
       .font(10).monospaced()
@@ -384,7 +408,7 @@ function tile(w, t) {
     // A tile that needs input already has a red border, so no dot there.
     Circle({ size: 6 }).fill(() => (t()?.hasUnread && !needsInput() ? LCARS.red : "clear")),
   ])
-    // Padding sets the height (the 14pt mark slot plus 5 above and below);
+    // Padding sets the height (the 20pt mark slot plus 5 above and below);
     // a frame height here doesn't stretch an HStack.
     .paddingHorizontal(6)
     .paddingVertical(5)
@@ -588,8 +612,8 @@ function closeConfirm(w) {
 // mark in its status colour (a little softer when idle, black on a red square
 // when it needs input); any other terminal is a smaller square in the
 // workspace tint, centred in the slot.
-const SLOT = 14;
-const PLAIN = 9;
+const SLOT = 20;
+const PLAIN = 10;
 const MINI_GAP = 2;
 
 function miniTile(w, t) {
@@ -605,10 +629,8 @@ function miniTile(w, t) {
     RoundedRectangle({ cornerRadius: 2 })
       .fill(() => (agent() ? "clear" : tint(accent(w()), live() ? ALPHA.lit : ALPHA.live)))
       .frame({ width: PLAIN, height: PLAIN }),
-    // 11pt, so the glyph still fits the slot once it has turned.
-    Text(() => (agent() ? agentMark(agent()).glyph : ""))
-      .font(11).weight("bold")
-      .color(() => (needsInput() ? "black" : agent() ? statusOf(agent()).color : "clear"))
+    // Large enough to see turn, small enough to fit the slot once turned.
+    markView(agent, 17, () => (needsInput() ? "black" : agent() ? statusOf(agent()).color : "clear"))
       .opacity(() => (agent()?.status === "idle" ? IDLE_OPACITY : 1))
       .rotation(spin(agent)),
   ])

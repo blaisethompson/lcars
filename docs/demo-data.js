@@ -42,8 +42,8 @@ function demoWorkspaces() {
     {
       id: "docs", title: "Docs refresh", directory: "~/src/docs-site",
       branch: "main", color: "#CC99CC", unread: 0,
-      tabs: [tab("docs-1", "claude", { focused: true })],
-      agents: [agent("c3", "claude", "Claude", "idle", "docs-1", 300)],
+      tabs: [tab("docs-1", "codex", { focused: true })],
+      agents: [agent("c3", "codex", "Codex", "idle", "docs-1", 300)],
     },
     {
       id: "postgres", title: "Postgres 17 upgrade", directory: "~/src/infra",

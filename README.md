@@ -49,9 +49,10 @@ periwinkle and gold are kept for status:
 - **Last agent message**.
 - **Terminal tiles**: one line per terminal with the agent's mark, the
   terminal's name and an unread dot. The shape of the mark says which agent
-  it is: ✱ Claude, ▣ OpenCode, ◆ anything else. Its colour is the status,
-  and it turns while the agent works. OpenCode's "OC | " title prefix is
-  left off the name. A tile that needs input gets a red border instead of the
+  it is: ✱ Claude, ▣ OpenCode, ⬢ Codex, ◆ anything else. Its colour is the
+  status, and it turns while the agent works. OpenCode's "OC | " title
+  prefix and Codex's title spinner are left off tile and workspace names. A
+  tile that needs input gets a red border instead of the
   unread dot, and the focused terminal is highlighted.
 
 Compact rows show the name, then folder and branch below it. The
@@ -98,8 +99,9 @@ The mode resets to Auto when cmux reloads the sidebar.
 
 ## OpenCode (optional)
 
-Claude Code reports its status to cmux out of the box. OpenCode needs cmux's
-plugin first:
+Claude Code reports its status to cmux out of the box, and so does Codex
+through cmux's own `codex` wrapper, with nothing to install. OpenCode needs
+cmux's plugin first:
 
 ```sh
 ./install.sh --opencode
