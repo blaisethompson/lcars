@@ -73,29 +73,36 @@ If they agree:
 edit `~/.config/cmux/cmux.json`. If they also want cmux's own highlights in the
 same orange, point them to the `app.accentColor` option in README.md.
 
-## 6. Ask about the OpenCode theme (optional)
+## 6. Ask about the agent themes (optional)
 
-Only if `command -v opencode` succeeds, ask the user whether they want the
-LCARS OpenCode theme: black panels, amber borders and the sidebar's colours
-in OpenCode itself. Explain that it replaces their current OpenCode theme, and
-that they can switch back with `/themes` in OpenCode. Do not run it without a
-yes.
+lcars has LCARS themes for three coding agents. Check which are installed
+(`command -v opencode`, `command -v claude`, `command -v codex`) and, in one
+question, ask the user which of those they want themed:
 
-If they agree:
+- **OpenCode** (`--opencode-theme`): the whole interface, in black, amber and
+  peach.
+- **Claude Code** (`--claude-theme`): the whole interface, in the same colours.
+- **Codex** (`--codex-theme`): only syntax highlighting in code blocks and
+  diffs; Codex has no other colour themes.
+
+Explain that each replaces that agent's current theme, and that they can
+switch back from the agent's theme menu (`/themes` in OpenCode, `/theme` in
+Claude Code and Codex). Do not run any without a yes, and pass only the flags
+they chose, for example:
 
 ```sh
-"$tmp/lcars/install.sh" --opencode-theme
+"$tmp/lcars/install.sh" --opencode-theme --claude-theme
 ```
 
-If the output says it couldn't edit `cli.json`, tell them to pick **lcars**
-with `/themes` in OpenCode. Otherwise tell them to restart OpenCode to see it.
+If the output says it couldn't edit a settings file, tell them to pick LCARS
+from that agent's theme menu. Otherwise tell them to restart those agents to
+see the themes.
 
 ## 7. Verify
 
 - `cmux sidebar validate lcars` prints `OK lcars`.
 - If `--theme` was used, `cmux themes list | head -3` shows `Current light: LCARS`.
-- If `--opencode-theme` was used, `~/.config/opencode/themes/lcars.json`
-  exists.
+- For each agent theme flag used, the output says `Set … theme to …`.
 - If `--select` was used, the left sidebar shows workspace cards with a
   **Workspaces** header and an **Auto** button. Ask the user to confirm, or
   take a screenshot with `cmux shot --label lcars` and look at the left edge.
@@ -121,8 +128,9 @@ plugin matches what cmux installed, and clears the OpenCode tab names lcars
 kept in workspace descriptions. Descriptions the user wrote are left alone.
 If the LCARS terminal theme is set, it also runs `cmux themes clear` (this
 resets both light and dark) and removes `~/.config/ghostty/themes/LCARS` unless
-the user edited it, and likewise resets OpenCode's theme if it is lcars and
-removes `~/.config/opencode/themes/lcars.json`; the output says which happened. cmux's own OpenCode integration stays installed.
+the user edited it, and likewise resets OpenCode's, Claude Code's and Codex's
+theme if it is LCARS and removes their LCARS theme files; the output says which
+happened. cmux's own OpenCode integration stays installed.
 
 Ask the user whether they also want cmux's OpenCode integration removed (it
 reports OpenCode status to cmux's own sidebar too, and they may have had it

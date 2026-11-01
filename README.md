@@ -31,7 +31,8 @@ cd lcars
 `./install.sh` without `--select` only installs it; pick it later with
 `cmux sidebar select lcars` or from the sidebar button's right-click menu.
 Add `--theme` to also install the [terminal theme](#terminal-theme-optional),
-and `--opencode-theme` for the [OpenCode theme](#opencode-theme-optional).
+and `--opencode-theme`, `--claude-theme` or `--codex-theme` for the
+[agent themes](#agent-themes-optional).
 
 ## What it shows
 
@@ -185,23 +186,29 @@ attention ring, the pane flash) in the same orange, set `app.accentColor` in
 The installer never touches that file. Back it up first, merge the setting
 into what you have, then run `cmux reload-config`.
 
-## OpenCode theme (optional)
+## Agent themes (optional)
 
-A matching theme for OpenCode itself: black panels, amber borders and
-headings, peach text, and the sidebar's colours for diffs, markdown and
-syntax. LCARS has no light variant, so it looks the same in light and dark
-mode.
+Matching themes for the coding agents themselves, each installed with its own
+flag. Each replaces that agent's current theme, so none is on unless you ask.
+LCARS has no light variant, so they look the same in light and dark mode.
 
 ```sh
-./install.sh --opencode-theme
+./install.sh --opencode-theme --claude-theme --codex-theme
 ```
 
-This copies `opencode/lcars.json` to `~/.config/opencode/themes/lcars.json`
-(backing up a different existing file) and sets `theme.name` to `lcars` in
-`~/.config/opencode/cli.json`, keeping your other settings. If that file has
-comments, the installer leaves it alone and you pick **lcars** with `/themes`
-instead. Restart open OpenCodes to see it. To switch back, pick another theme
-with `/themes`, or run `./install.sh --uninstall`.
+| Flag | Agent | What it themes | Theme file | Setting |
+| --- | --- | --- | --- | --- |
+| `--opencode-theme` | OpenCode | everything: black panels, amber borders and headings, peach text, diffs, markdown and syntax | `~/.config/opencode/themes/lcars.json` | `theme.name` in `~/.config/opencode/cli.json` |
+| `--claude-theme` | Claude Code | everything: amber Claude, peach text, lavender prompt box, LCARS diffs and status colours | `~/.claude/themes/lcars.json` | `theme` in `~/.claude/settings.json` |
+| `--codex-theme` | Codex | syntax highlighting in code blocks and diffs (Codex has no other colour themes) | `~/.codex/themes/lcars.tmTheme` | `theme` under `[tui]` in `~/.codex/config.toml` |
+
+The installer copies each theme file into place (backing up a different
+existing file) and changes only that one setting, keeping the rest of the
+file. If OpenCode's or Claude Code's settings file has comments, it leaves the
+file alone and you pick LCARS from the agent's theme menu instead. Restart
+open agents to see it. To switch back,
+pick another theme with `/themes` (OpenCode) or `/theme` (Claude Code, Codex),
+or run `./install.sh --uninstall`.
 
 ## Uninstall
 
@@ -215,10 +222,9 @@ This removes the sidebar, reverts the OpenCode plugin patch, and clears the
 OpenCode tab names kept in workspace descriptions (yours are left alone). If
 the LCARS terminal theme is set, it runs `cmux themes clear` (which resets both
 light and dark) and deletes `~/.config/ghostty/themes/LCARS` unless you have
-edited it. If OpenCode's theme is lcars, it removes that setting from
-OpenCode's `cli.json` (back to OpenCode's default theme) and deletes
-`~/.config/opencode/themes/lcars.json` unless you have edited it. It never
-touches `cmux.json`.
+edited it. For each agent whose theme is LCARS, it removes that setting (back
+to the agent's default theme) and deletes the agent theme file unless you have
+edited it. It never touches `cmux.json`.
 Add `--opencode` to also remove cmux's OpenCode integration. Then choose
 another sidebar from the sidebar button's right-click menu and restart
 OpenCode. An agent can do this too: ask it to uninstall lcars following

@@ -10,9 +10,14 @@
 #   ./install.sh --opencode-theme
 #                              also install the LCARS OpenCode theme and make
 #                              it OpenCode's theme
+#   ./install.sh --claude-theme
+#                              also install the LCARS Claude Code theme and
+#                              make it Claude Code's theme
+#   ./install.sh --codex-theme also install the LCARS Codex syntax theme and
+#                              make it Codex's theme
 #   ./install.sh --uninstall   remove lcars, revert its OpenCode patch, clear
 #                              the tab names it kept in workspaces and reset
-#                              the LCARS terminal and OpenCode themes
+#                              the LCARS themes
 #   ./install.sh --uninstall --opencode
 #                              also remove cmux's OpenCode integration
 #
@@ -41,10 +46,22 @@ oc_cli="$opencode_dir/cli.json"
 oc_theme_src="$here/opencode/lcars.json"
 oc_theme_target="$opencode_dir/themes/lcars.json"
 
+claude_dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+claude_settings="$claude_dir/settings.json"
+claude_theme_src="$here/claude/lcars.json"
+claude_theme_target="$claude_dir/themes/lcars.json"
+
+codex_dir="${CODEX_HOME:-$HOME/.codex}"
+codex_config="$codex_dir/config.toml"
+codex_theme_src="$here/codex/lcars.tmTheme"
+codex_theme_target="$codex_dir/themes/lcars.tmTheme"
+
 select=0
 opencode=0
 theme=0
 opencode_theme=0
+claude_theme=0
+codex_theme=0
 uninstall=0
 for arg in "$@"; do
   case "$arg" in
@@ -52,8 +69,10 @@ for arg in "$@"; do
     --opencode) opencode=1 ;;
     --theme) theme=1 ;;
     --opencode-theme) opencode_theme=1 ;;
+    --claude-theme) claude_theme=1 ;;
+    --codex-theme) codex_theme=1 ;;
     --uninstall) uninstall=1 ;;
-    -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $arg" >&2; exit 2 ;;
   esac
 done
@@ -102,50 +121,137 @@ uninstall_theme() {
   fi
 }
 
-# Reads OpenCode's cli.json and prints its theme name, or with a second
-# argument sets the name (an empty one removes it). Exits 3 if the file
-# isn't plain JSON (OpenCode allows comments), leaving it untouched.
-opencode_theme_name() {
-  osascript -l JavaScript - "$oc_cli" "$@" <<'JS' 2>/dev/null
+# json_setting FILE KEY [VALUE]: prints the string at KEY (dotted, such as
+# theme.name) in a JSON file, or with VALUE sets it; an empty VALUE removes
+# it, and any object left empty. Exits 3 if the file isn't plain JSON (it may
+# have comments), leaving it untouched. A missing file reads as {}.
+json_setting() {
+  osascript -l JavaScript - "$@" <<'JS' 2>/dev/null
     function run(argv) {
-      const [path, ...rest] = argv;
+      const [path, key, ...rest] = argv;
       const fm = $.NSFileManager.defaultManager;
-      let config = { $schema: "https://opencode.ai/v2/cli.json" };
+      let config = {};
       if (fm.fileExistsAtPath(path)) {
         const text = $.NSString.stringWithContentsOfFileEncodingError(path, $.NSUTF8StringEncoding, null).js;
         try { config = JSON.parse(text); } catch (e) { $.exit(3); }
       }
-      if (rest.length === 0) return (config.theme && config.theme.name) || "";
-      const name = rest[0];
-      if (name) {
-        config.theme = Object.assign({}, config.theme, { name });
-      } else if (config.theme) {
-        delete config.theme.name;
-        if (Object.keys(config.theme).length === 0) delete config.theme;
+      const parts = key.split(".");
+      const last = parts.pop();
+      if (rest.length === 0) {
+        let node = config;
+        for (const p of parts) node = node && typeof node === "object" ? node[p] : undefined;
+        const value = node && typeof node === "object" ? node[last] : undefined;
+        return typeof value === "string" ? value : "";
+      }
+      const value = rest[0];
+      const chain = [config];
+      for (const p of parts) {
+        const parent = chain[chain.length - 1];
+        if (!parent[p] || typeof parent[p] !== "object") {
+          if (!value) return "";
+          parent[p] = {};
+        }
+        chain.push(parent[p]);
+      }
+      if (value) {
+        chain[chain.length - 1][last] = value;
+      } else {
+        delete chain[chain.length - 1][last];
+        for (let i = parts.length - 1; i >= 0; i--) {
+          if (Object.keys(chain[i + 1]).length > 0) break;
+          delete chain[i][parts[i]];
+        }
       }
       $(JSON.stringify(config, null, 2) + "\n").writeToFileAtomicallyEncodingError(path, true, $.NSUTF8StringEncoding, null);
-      return name;
+      return value;
     }
 JS
 }
 
-# Switches OpenCode back to its default theme if it is lcars's, and removes
-# the theme file if it is still the one this repo ships.
-uninstall_opencode_theme() {
+# codex_theme [NAME]: prints the theme in the [tui] table of Codex's
+# config.toml, or with NAME sets it; an empty NAME removes it.
+codex_theme() {
+  if [[ $# -eq 0 ]]; then
+    [[ -f "$codex_config" ]] || return 0
+    awk '/^[[:space:]]*\[/ { tui = ($0 ~ /^[[:space:]]*\[tui\][[:space:]]*(#.*)?$/) }
+      tui && /^[[:space:]]*theme[[:space:]]*=/ {
+        v = $0; sub(/^[^=]*=[[:space:]]*/, "", v); sub(/[[:space:]]*(#.*)?$/, "", v)
+        gsub(/^["\x27]|["\x27]$/, "", v); print v; exit
+      }' "$codex_config"
+    return 0
+  fi
+  local name="$1" tmp
+  mkdir -p "$codex_dir"
+  touch "$codex_config"
+  tmp="$(mktemp)"
+  awk -v name="$name" '
+    function emit() { if (name != "" && !done) { print "theme = \"" name "\""; done = 1 } }
+    /^[[:space:]]*\[/ {
+      if (tui) emit()
+      tui = ($0 ~ /^[[:space:]]*\[tui\][[:space:]]*(#.*)?$/)
+      if (tui) seen = 1
+      print; if (tui) emit(); next
+    }
+    tui && /^[[:space:]]*theme[[:space:]]*=/ { next }
+    { print }
+    END { if (!seen && name != "") { print ""; print "[tui]"; emit() } }
+  ' "$codex_config" > "$tmp"
+  cat "$tmp" > "$codex_config"
+  rm "$tmp"
+}
+
+# install_file SRC TARGET LABEL: copies a theme file into place, backing up a
+# different existing one.
+install_file() {
+  local src="$1" target="$2" label="$3" backup
+  mkdir -p "$(dirname "$target")"
+  if cmp -s "$src" "$target" 2>/dev/null; then
+    echo "$target is already up to date"
+    return
+  fi
+  if [[ -f "$target" ]]; then
+    backup="${target}.$(date +%Y%m%d-%H%M%S).bak"
+    cp "$target" "$backup"
+    echo "Backed up existing $label to $backup"
+  fi
+  cp "$src" "$target"
+  echo "Installed $target"
+}
+
+# remove_file SRC TARGET: removes an installed theme file unless it was edited.
+remove_file() {
+  local src="$1" target="$2"
+  [[ -f "$target" ]] || return 0
+  if cmp -s "$src" "$target"; then
+    rm "$target"
+    rmdir "$(dirname "$target")" 2>/dev/null || true
+    echo "Removed $target"
+  else
+    echo "Kept $target: it differs from lcars's theme"
+  fi
+}
+
+# Switch each app back to its default theme if it is lcars's, and remove the
+# theme files that are still the ones this repo ships.
+uninstall_app_themes() {
   local current
-  if current="$(opencode_theme_name)" && [[ "$current" == "lcars" ]]; then
-    opencode_theme_name "" >/dev/null
+  if current="$(json_setting "$oc_cli" theme.name)" && [[ "$current" == "lcars" ]]; then
+    json_setting "$oc_cli" theme.name "" >/dev/null
     echo "Reset OpenCode's theme in $oc_cli (it was lcars)"
   fi
-  if [[ -f "$oc_theme_target" ]]; then
-    if cmp -s "$oc_theme_src" "$oc_theme_target"; then
-      rm "$oc_theme_target"
-      rmdir "$(dirname "$oc_theme_target")" 2>/dev/null || true
-      echo "Removed $oc_theme_target"
-    else
-      echo "Kept $oc_theme_target: it differs from lcars's theme"
-    fi
+  remove_file "$oc_theme_src" "$oc_theme_target"
+
+  if current="$(json_setting "$claude_settings" theme)" && [[ "$current" == "custom:lcars" ]]; then
+    json_setting "$claude_settings" theme "" >/dev/null
+    echo "Reset Claude Code's theme in $claude_settings (it was LCARS)"
   fi
+  remove_file "$claude_theme_src" "$claude_theme_target"
+
+  if [[ "$(codex_theme)" == "lcars" ]]; then
+    codex_theme ""
+    echo "Reset Codex's theme in $codex_config (it was lcars)"
+  fi
+  remove_file "$codex_theme_src" "$codex_theme_target"
 }
 
 if [[ $uninstall -eq 1 ]]; then
@@ -186,7 +292,7 @@ if [[ $uninstall -eq 1 ]]; then
   fi
 
   uninstall_theme
-  uninstall_opencode_theme
+  uninstall_app_themes
 
   echo "Done. Pick another sidebar from the sidebar button's right-click menu, and restart OpenCode."
   exit 0
@@ -268,28 +374,33 @@ if [[ $theme -eq 1 ]]; then
 fi
 
 if [[ $opencode_theme -eq 1 ]]; then
-  mkdir -p "$(dirname "$oc_theme_target")"
-  if [[ -f "$oc_theme_target" ]] && ! cmp -s "$oc_theme_src" "$oc_theme_target"; then
-    backup="${oc_theme_target}.$(date +%Y%m%d-%H%M%S).bak"
-    cp "$oc_theme_target" "$backup"
-    echo "Backed up existing OpenCode lcars theme to $backup"
-  fi
-  if cmp -s "$oc_theme_src" "$oc_theme_target" 2>/dev/null; then
-    echo "$oc_theme_target is already up to date"
-  else
-    cp "$oc_theme_src" "$oc_theme_target"
-    echo "Installed $oc_theme_target"
-  fi
-  if previous="$(opencode_theme_name)"; then
-    opencode_theme_name lcars >/dev/null
-    if [[ -n "$previous" && "$previous" != "lcars" ]]; then
-      echo "Set OpenCode's theme to lcars (it was $previous). Undo with /themes in OpenCode."
-    else
-      echo "Set OpenCode's theme to lcars. Undo with /themes in OpenCode."
-    fi
+  install_file "$oc_theme_src" "$oc_theme_target" "OpenCode lcars theme"
+  if previous="$(json_setting "$oc_cli" theme.name)"; then
+    [[ "$previous" != "lcars" ]] || previous=""
+    json_setting "$oc_cli" theme.name lcars >/dev/null
+    echo "Set OpenCode's theme to lcars${previous:+ (it was $previous)}. Undo with /themes in OpenCode."
   else
     echo "Couldn't edit $oc_cli (it has comments or isn't valid JSON); pick lcars with /themes in OpenCode." >&2
   fi
+fi
+
+if [[ $claude_theme -eq 1 ]]; then
+  install_file "$claude_theme_src" "$claude_theme_target" "Claude Code LCARS theme"
+  if previous="$(json_setting "$claude_settings" theme)"; then
+    [[ "$previous" != "custom:lcars" ]] || previous=""
+    json_setting "$claude_settings" theme custom:lcars >/dev/null
+    echo "Set Claude Code's theme to LCARS${previous:+ (it was ${previous#custom:})}. Undo with /theme in Claude Code."
+  else
+    echo "Couldn't edit $claude_settings (it has comments or isn't valid JSON); pick LCARS with /theme in Claude Code." >&2
+  fi
+fi
+
+if [[ $codex_theme -eq 1 ]]; then
+  install_file "$codex_theme_src" "$codex_theme_target" "Codex LCARS theme"
+  previous="$(codex_theme)"
+  [[ "$previous" != "lcars" ]] || previous=""
+  codex_theme lcars
+  echo "Set Codex's syntax theme to lcars${previous:+ (it was $previous)}. Undo with /theme in Codex."
 fi
 
 if [[ $select -eq 0 ]]; then
