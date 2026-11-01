@@ -28,6 +28,7 @@ cd lcars
 
 `./install.sh` without `--select` only installs it; pick it later with
 `cmux sidebar select lcars` or from the sidebar button's right-click menu.
+Add `--theme` to also install the [terminal theme](#terminal-theme-optional).
 
 ## What it shows
 
@@ -147,6 +148,36 @@ clicking it takes you straight there.
 
 To remove it again, see [Uninstall](#uninstall).
 
+## Terminal theme (optional)
+
+lcars comes with a matching terminal colour theme: a black background, peach
+text, and the sidebar's colours for the terminal's ANSI colours. It changes how
+every cmux terminal looks, so it is off unless you ask for it:
+
+```sh
+./install.sh --theme
+```
+
+This copies `theme/LCARS` to `~/.config/ghostty/themes/LCARS` (backing up a
+different existing file) and runs `cmux themes set LCARS`, which applies it to
+both light and dark mode and reloads open terminals. To switch back, run
+`cmux themes clear`, or `./install.sh --uninstall`.
+
+A sidebar can't theme cmux's own tab bar. If you want cmux's highlights (the
+attention ring, the pane flash) in the same orange, set `app.accentColor` in
+`~/.config/cmux/cmux.json`:
+
+```jsonc
+{
+  "app": {
+    "accentColor": "#FF9900"
+  }
+}
+```
+
+The installer never touches that file. Back it up first, merge the setting
+into what you have, then run `cmux reload-config`.
+
 ## Uninstall
 
 From a clone of this repo:
@@ -156,7 +187,10 @@ From a clone of this repo:
 ```
 
 This removes the sidebar, reverts the OpenCode plugin patch, and clears the
-OpenCode tab names kept in workspace descriptions (yours are left alone).
+OpenCode tab names kept in workspace descriptions (yours are left alone). If
+the LCARS terminal theme is set, it runs `cmux themes clear` (which resets both
+light and dark) and deletes `~/.config/ghostty/themes/LCARS` unless you have
+edited it. It never touches `cmux.json`.
 Add `--opencode` to also remove cmux's OpenCode integration. Then choose
 another sidebar from the sidebar button's right-click menu and restart
 OpenCode. An agent can do this too: ask it to uninstall lcars following

@@ -1,0 +1,23 @@
+# LCARS: black panels, peach lettering and the lcars sidebar's colours.
+background = #000000
+foreground = #FFDDBB
+cursor-color = #FF9900
+cursor-text = #000000
+selection-background = #CC99CC
+selection-foreground = #000000
+palette = 0=#000000
+palette = 1=#FF5555
+palette = 2=#99CC99
+palette = 3=#FF9900
+palette = 4=#9999FF
+palette = 5=#CC6699
+palette = 6=#66CCCC
+palette = 7=#DDCCBB
+palette = 8=#666688
+palette = 9=#FF7777
+palette = 10=#BBDDAA
+palette = 11=#FFCC66
+palette = 12=#99CCFF
+palette = 13=#CC99CC
+palette = 14=#99EEEE
+palette = 15=#FFFFFF

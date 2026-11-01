@@ -5,8 +5,11 @@
 #   ./install.sh --select      also make lcars the left sidebar
 #   ./install.sh --opencode    also install cmux's OpenCode integration, and
 #                              patch it to name tabs and end closed sessions
-#   ./install.sh --uninstall   remove lcars, revert its OpenCode patch and
-#                              clear the tab names it kept in workspaces
+#   ./install.sh --theme       also install the LCARS terminal colour theme
+#                              and make it cmux's theme
+#   ./install.sh --uninstall   remove lcars, revert its OpenCode patch, clear
+#                              the tab names it kept in workspaces and reset
+#                              the LCARS theme
 #   ./install.sh --uninstall --opencode
 #                              also remove cmux's OpenCode integration
 #
@@ -26,15 +29,21 @@ patchfile="$here/opencode/cmux-tui.patch"
 patch_marker="lcars-opencode-patch v2"
 names_marker="lcars-tabs "
 
+themes="${XDG_CONFIG_HOME:-$HOME/.config}/ghostty/themes"
+theme_src="$here/theme/LCARS"
+theme_target="$themes/LCARS"
+
 select=0
 opencode=0
+theme=0
 uninstall=0
 for arg in "$@"; do
   case "$arg" in
     --select) select=1 ;;
     --opencode) opencode=1 ;;
+    --theme) theme=1 ;;
     --uninstall) uninstall=1 ;;
-    -h|--help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $arg" >&2; exit 2 ;;
   esac
 done
@@ -55,6 +64,32 @@ lcars_named_workspaces() {
         .filter((w) => (w.description || "").startsWith(mark))
         .map((w) => w.id).join("\n");
     }' 2>/dev/null || true
+}
+
+# Resets cmux's theme if it is LCARS, and removes the theme file if it is
+# still the one this repo ships.
+uninstall_theme() {
+  local list light dark
+  list="$(cmux themes list 2>/dev/null || true)"
+  light="$(sed -n 's/^Current light: //p' <<<"$list" | head -n1)"
+  dark="$(sed -n 's/^Current dark: //p' <<<"$list" | head -n1)"
+  if [[ "$light" == "LCARS" || "$dark" == "LCARS" ]]; then
+    cmux themes clear >/dev/null
+    if [[ "$light" == "LCARS" && "$dark" == "LCARS" ]]; then
+      echo "Reset cmux's theme (it was LCARS)"
+    else
+      echo "Reset cmux's light and dark themes (LCARS was one of them; clear resets both)"
+    fi
+  fi
+
+  if [[ -f "$theme_target" ]]; then
+    if cmp -s "$theme_src" "$theme_target"; then
+      rm "$theme_target"
+      echo "Removed $theme_target"
+    else
+      echo "Kept $theme_target: it differs from lcars's theme"
+    fi
+  fi
 }
 
 if [[ $uninstall -eq 1 ]]; then
@@ -93,6 +128,8 @@ if [[ $uninstall -eq 1 ]]; then
     done
     rmdir "$disabled" 2>/dev/null || true
   fi
+
+  uninstall_theme
 
   echo "Done. Pick another sidebar from the sidebar button's right-click menu, and restart OpenCode."
   exit 0
@@ -154,6 +191,23 @@ if [[ $opencode -eq 1 ]]; then
     fi
     echo "OpenCode integration installed. Restart OpenCode for it to take effect."
   fi
+fi
+
+if [[ $theme -eq 1 ]]; then
+  mkdir -p "$themes"
+  if [[ -f "$theme_target" ]] && ! cmp -s "$theme_src" "$theme_target"; then
+    backup="${theme_target}.$(date +%Y%m%d-%H%M%S).bak"
+    cp "$theme_target" "$backup"
+    echo "Backed up existing LCARS theme to $backup"
+  fi
+  if cmp -s "$theme_src" "$theme_target" 2>/dev/null; then
+    echo "$theme_target is already up to date"
+  else
+    cp "$theme_src" "$theme_target"
+    echo "Installed $theme_target"
+  fi
+  cmux themes set LCARS
+  echo "Set the cmux theme to LCARS. Undo with: cmux themes clear"
 fi
 
 if [[ $select -eq 0 ]]; then
