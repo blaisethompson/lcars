@@ -55,6 +55,7 @@ const AGENTS = {
   // Codex's hexagon is the SF Symbol, which turns about its middle. Symbols
   // draw larger than these characters, hence the smaller size.
   codex: { symbol: "hexagon.fill", step: 60, scale: 0.65 },
+  antigravity: { symbol: "sparkle", step: 90, scale: 0.75 },
 };
 const OTHER_AGENT = { glyph: "◆", step: 90 };
 const agentMark = (a) => AGENTS[a?.kind] ?? OTHER_AGENT;
@@ -120,8 +121,7 @@ const ALPHA = {
   hover: "4D",   // tile hover
   button: "33",  // button hover
   live: "59",    // live tile; plain mini tile at rest
-  lit: "B3",     // plain mini tile when live
-  ring: "CC",    // ring around a live plain mini tile
+  lit: "B3",     // focused plain mini tile
   strong: "D9",  // title lettering, live tile border, close button
   quiet: "A6",   // amber for a quiet agent: calmer than working
 };
@@ -631,16 +631,17 @@ function closeConfirm(w) {
 
 // Compact minimap tiles all share one square slot, so marks fall in the same
 // columns whatever they hold. A terminal running an agent shows that agent's
-// mark in its status colour (a little softer when idle, black on a red square
-// when it needs input); any other terminal is a smaller square in the
-// workspace tint, centred in the slot.
+// mark in its status colour (black on a red square when it needs input); any
+// other terminal is a smaller square in the workspace tint, centred in the
+// slot. Both are brighter on the workspace's focused tab and dimmer at rest.
 const SLOT = 20;
 const PLAIN = 10;
 const MINI_GAP = 2;
+const MINI_REST_OPACITY = 0.5;
 
 function miniTile(w, t) {
   const agent = () => agentForTab(w(), t());
-  const live = () => !!t()?.focused && !!w()?.selected;
+  const focused = () => !!t()?.focused;
   const needsInput = () => agent()?.status === "needs_input";
   // The shapes give the slot its size; an empty Text alone collapses to
   // nothing, which hid plain terminals' squares.
@@ -649,15 +650,14 @@ function miniTile(w, t) {
       .fill(() => (needsInput() ? LCARS.red : "clear"))
       .frame({ width: SLOT, height: SLOT }),
     RoundedRectangle({ cornerRadius: 2 })
-      .fill(() => (agent() ? "clear" : tint(accent(w()), live() ? ALPHA.lit : ALPHA.live)))
+      .fill(() => (agent() ? "clear" : tint(accent(w()), focused() ? ALPHA.lit : ALPHA.live)))
       .frame({ width: PLAIN, height: PLAIN }),
     // Large enough to see turn, small enough to fit the slot once turned.
     markView(agent, 17, () => (needsInput() ? "black" : agent() ? statusOf(agent()).color : "clear"))
-      .opacity(() => (agent()?.status === "idle" ? IDLE_OPACITY : 1))
+      .opacity(() => (focused() || needsInput() ? 1 : MINI_REST_OPACITY))
       .rotation(spin(agent)),
   ])
-    .borderColor(() =>
-      t()?.hasUnread ? LCARS.red : live() && !agent() ? tint(WHITE, ALPHA.ring) : "clear")
+    .borderColor(() => (t()?.hasUnread ? LCARS.red : "clear"))
     .borderWidth(1)
     .cornerRadius(3)
     .cursor("pointer")

@@ -53,10 +53,10 @@ periwinkle and gold are kept for status:
 - **Last agent message**.
 - **Terminal tiles**: one line per terminal with the agent's mark, the
   terminal's name and an unread dot. The shape of the mark says which agent
-  it is: ✱ Claude, ▣ OpenCode, ⬢ Codex, ◆ anything else. Its colour is the
-  status, and it turns while the agent works. OpenCode's "OC | " title
-  prefix and Codex's title spinner are left off tile and workspace names. A
-  tile that needs input gets a red border instead of the
+  it is: ✱ Claude, ▣ OpenCode, ⬢ Codex, ✦ Antigravity, ◆ anything else. Its
+  colour is the status, and it turns while the agent works. OpenCode's "OC | "
+  title prefix and Codex's title spinner are left off tile and workspace names.
+  A tile that needs input gets a red border instead of the
   unread dot, and the focused terminal is highlighted.
 
 Compact rows show the name, then folder and branch below it. The
@@ -103,9 +103,9 @@ The mode resets to Auto when cmux reloads the sidebar.
 
 ## OpenCode (optional)
 
-Claude Code reports its status to cmux out of the box, and so does Codex
-through cmux's own `codex` wrapper, with nothing to install. OpenCode needs
-cmux's plugin first:
+Claude Code reports its status to cmux out of the box, and so do Codex and
+Antigravity through cmux's own `codex` and `agy` wrappers, with nothing to
+install. OpenCode needs cmux's plugin first:
 
 ```sh
 ./install.sh --opencode
@@ -211,6 +211,12 @@ file alone and you pick LCARS from the agent's theme menu instead. Restart
 open agents to see it. To switch back,
 pick another theme with `/themes` (OpenCode) or `/theme` (Claude Code, Codex),
 or run `./install.sh --uninstall`.
+
+Antigravity (`agy`) doesn't load custom theme files; its default `colorScheme`
+(`"terminal"` in `~/.gemini/antigravity-cli/settings.json`, or **Color Scheme ›
+terminal** in `/config`) inherits the terminal's ANSI palette, so installing
+the [terminal theme](#terminal-theme-optional) (`./install.sh --theme`) themes
+`agy` too.
 
 ## Uninstall
 

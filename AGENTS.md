@@ -96,7 +96,8 @@ they chose, for example:
 
 If the output says it couldn't edit a settings file, tell them to pick LCARS
 from that agent's theme menu. Otherwise tell them to restart those agents to
-see the themes.
+see the themes. (Antigravity / `agy` has no custom theme files; its default
+`"terminal"` colour scheme inherits the LCARS terminal theme from step 5.)
 
 ## 7. Verify
 
