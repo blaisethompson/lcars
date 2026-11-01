@@ -7,9 +7,12 @@
 #                              patch it to name tabs and end closed sessions
 #   ./install.sh --theme       also install the LCARS terminal colour theme
 #                              and make it cmux's theme
+#   ./install.sh --opencode-theme
+#                              also install the LCARS OpenCode theme and make
+#                              it OpenCode's theme
 #   ./install.sh --uninstall   remove lcars, revert its OpenCode patch, clear
 #                              the tab names it kept in workspaces and reset
-#                              the LCARS theme
+#                              the LCARS terminal and OpenCode themes
 #   ./install.sh --uninstall --opencode
 #                              also remove cmux's OpenCode integration
 #
@@ -22,7 +25,8 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 sidebars="${HOME}/.config/cmux/sidebars"
 target="${sidebars}/lcars.js"
 
-plugins="${OPENCODE_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/opencode}/plugins"
+opencode_dir="${OPENCODE_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/opencode}"
+plugins="$opencode_dir/plugins"
 disabled="$(dirname "$plugins")/plugins-disabled"
 tui="$plugins/cmux/tui.js"
 patchfile="$here/opencode/cmux-tui.patch"
@@ -33,17 +37,23 @@ themes="${XDG_CONFIG_HOME:-$HOME/.config}/ghostty/themes"
 theme_src="$here/theme/LCARS"
 theme_target="$themes/LCARS"
 
+oc_cli="$opencode_dir/cli.json"
+oc_theme_src="$here/opencode/lcars.json"
+oc_theme_target="$opencode_dir/themes/lcars.json"
+
 select=0
 opencode=0
 theme=0
+opencode_theme=0
 uninstall=0
 for arg in "$@"; do
   case "$arg" in
     --select) select=1 ;;
     --opencode) opencode=1 ;;
     --theme) theme=1 ;;
+    --opencode-theme) opencode_theme=1 ;;
     --uninstall) uninstall=1 ;;
-    -h|--help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $arg" >&2; exit 2 ;;
   esac
 done
@@ -92,6 +102,52 @@ uninstall_theme() {
   fi
 }
 
+# Reads OpenCode's cli.json and prints its theme name, or with a second
+# argument sets the name (an empty one removes it). Exits 3 if the file
+# isn't plain JSON (OpenCode allows comments), leaving it untouched.
+opencode_theme_name() {
+  osascript -l JavaScript - "$oc_cli" "$@" <<'JS' 2>/dev/null
+    function run(argv) {
+      const [path, ...rest] = argv;
+      const fm = $.NSFileManager.defaultManager;
+      let config = { $schema: "https://opencode.ai/v2/cli.json" };
+      if (fm.fileExistsAtPath(path)) {
+        const text = $.NSString.stringWithContentsOfFileEncodingError(path, $.NSUTF8StringEncoding, null).js;
+        try { config = JSON.parse(text); } catch (e) { $.exit(3); }
+      }
+      if (rest.length === 0) return (config.theme && config.theme.name) || "";
+      const name = rest[0];
+      if (name) {
+        config.theme = Object.assign({}, config.theme, { name });
+      } else if (config.theme) {
+        delete config.theme.name;
+        if (Object.keys(config.theme).length === 0) delete config.theme;
+      }
+      $(JSON.stringify(config, null, 2) + "\n").writeToFileAtomicallyEncodingError(path, true, $.NSUTF8StringEncoding, null);
+      return name;
+    }
+JS
+}
+
+# Switches OpenCode back to its default theme if it is lcars's, and removes
+# the theme file if it is still the one this repo ships.
+uninstall_opencode_theme() {
+  local current
+  if current="$(opencode_theme_name)" && [[ "$current" == "lcars" ]]; then
+    opencode_theme_name "" >/dev/null
+    echo "Reset OpenCode's theme in $oc_cli (it was lcars)"
+  fi
+  if [[ -f "$oc_theme_target" ]]; then
+    if cmp -s "$oc_theme_src" "$oc_theme_target"; then
+      rm "$oc_theme_target"
+      rmdir "$(dirname "$oc_theme_target")" 2>/dev/null || true
+      echo "Removed $oc_theme_target"
+    else
+      echo "Kept $oc_theme_target: it differs from lcars's theme"
+    fi
+  fi
+}
+
 if [[ $uninstall -eq 1 ]]; then
   if [[ -L "$target" || -f "$target" ]]; then
     rm "$target"
@@ -130,6 +186,7 @@ if [[ $uninstall -eq 1 ]]; then
   fi
 
   uninstall_theme
+  uninstall_opencode_theme
 
   echo "Done. Pick another sidebar from the sidebar button's right-click menu, and restart OpenCode."
   exit 0
@@ -208,6 +265,31 @@ if [[ $theme -eq 1 ]]; then
   fi
   cmux themes set LCARS
   echo "Set the cmux theme to LCARS. Undo with: cmux themes clear"
+fi
+
+if [[ $opencode_theme -eq 1 ]]; then
+  mkdir -p "$(dirname "$oc_theme_target")"
+  if [[ -f "$oc_theme_target" ]] && ! cmp -s "$oc_theme_src" "$oc_theme_target"; then
+    backup="${oc_theme_target}.$(date +%Y%m%d-%H%M%S).bak"
+    cp "$oc_theme_target" "$backup"
+    echo "Backed up existing OpenCode lcars theme to $backup"
+  fi
+  if cmp -s "$oc_theme_src" "$oc_theme_target" 2>/dev/null; then
+    echo "$oc_theme_target is already up to date"
+  else
+    cp "$oc_theme_src" "$oc_theme_target"
+    echo "Installed $oc_theme_target"
+  fi
+  if previous="$(opencode_theme_name)"; then
+    opencode_theme_name lcars >/dev/null
+    if [[ -n "$previous" && "$previous" != "lcars" ]]; then
+      echo "Set OpenCode's theme to lcars (it was $previous). Undo with /themes in OpenCode."
+    else
+      echo "Set OpenCode's theme to lcars. Undo with /themes in OpenCode."
+    fi
+  else
+    echo "Couldn't edit $oc_cli (it has comments or isn't valid JSON); pick lcars with /themes in OpenCode." >&2
+  fi
 fi
 
 if [[ $select -eq 0 ]]; then

@@ -18,7 +18,7 @@ Paste this to Claude Code, OpenCode or any coding agent running in cmux:
 > `https://github.com/blaisethompson/lcars` and follow its AGENTS.md.
 
 The agent installs the sidebar, makes it your left sidebar, and asks before
-setting up the optional OpenCode integration.
+setting up the optional OpenCode integration and themes.
 
 ### By hand
 
@@ -30,7 +30,8 @@ cd lcars
 
 `./install.sh` without `--select` only installs it; pick it later with
 `cmux sidebar select lcars` or from the sidebar button's right-click menu.
-Add `--theme` to also install the [terminal theme](#terminal-theme-optional).
+Add `--theme` to also install the [terminal theme](#terminal-theme-optional),
+and `--opencode-theme` for the [OpenCode theme](#opencode-theme-optional).
 
 ## What it shows
 
@@ -184,6 +185,24 @@ attention ring, the pane flash) in the same orange, set `app.accentColor` in
 The installer never touches that file. Back it up first, merge the setting
 into what you have, then run `cmux reload-config`.
 
+## OpenCode theme (optional)
+
+A matching theme for OpenCode itself: black panels, amber borders and
+headings, peach text, and the sidebar's colours for diffs, markdown and
+syntax. LCARS has no light variant, so it looks the same in light and dark
+mode.
+
+```sh
+./install.sh --opencode-theme
+```
+
+This copies `opencode/lcars.json` to `~/.config/opencode/themes/lcars.json`
+(backing up a different existing file) and sets `theme.name` to `lcars` in
+`~/.config/opencode/cli.json`, keeping your other settings. If that file has
+comments, the installer leaves it alone and you pick **lcars** with `/themes`
+instead. Restart open OpenCodes to see it. To switch back, pick another theme
+with `/themes`, or run `./install.sh --uninstall`.
+
 ## Uninstall
 
 From a clone of this repo:
@@ -196,7 +215,10 @@ This removes the sidebar, reverts the OpenCode plugin patch, and clears the
 OpenCode tab names kept in workspace descriptions (yours are left alone). If
 the LCARS terminal theme is set, it runs `cmux themes clear` (which resets both
 light and dark) and deletes `~/.config/ghostty/themes/LCARS` unless you have
-edited it. It never touches `cmux.json`.
+edited it. If OpenCode's theme is lcars, it removes that setting from
+OpenCode's `cli.json` (back to OpenCode's default theme) and deletes
+`~/.config/opencode/themes/lcars.json` unless you have edited it. It never
+touches `cmux.json`.
 Add `--opencode` to also remove cmux's OpenCode integration. Then choose
 another sidebar from the sidebar button's right-click menu and restart
 OpenCode. An agent can do this too: ask it to uninstall lcars following
