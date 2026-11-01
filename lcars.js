@@ -1,7 +1,7 @@
 // lcars: workspace cards with name, folder and branch, the live agent's
 // status and last message, and a minimap row with one tile per terminal.
 // Click a card to select the workspace, a tile to focus that terminal, and
-// drag cards to reorder. Right-click a card or the space below for workspace actions.
+// drag cards to reorder. Right-click a card for workspace actions.
 //
 // https://github.com/blaisethompson/lcars
 //
@@ -868,32 +868,6 @@ function header() {
   ]).frame({ height: BAR }).paddingHorizontal(6).paddingVertical(2);
 }
 
-function openAreaMenu() {
-  return [
-    Button("New Workspace", () => cmux("workspace.create", {})),
-  ];
-}
-
-// The sidebar sits inside a vertical ScrollView, where a Spacer collapses,
-// so the open space below the cards is a transparent shape tall enough to
-// reach the bottom of the window and catch right-clicks for "New Workspace".
-// cmux gives sidebars no viewport size, so these are estimates: the window
-// height to fill, the header and padding above the cards, and a card's height
-// compact and expanded. Past the window height the area keeps a floor of
-// OPEN_AREA_MIN, which at worst adds a little scroll.
-const WINDOW_HEIGHT = 900;
-const HEADER_SPACE = 40;
-const CARD_HEIGHT = { compact: 42, full: 110 };
-const OPEN_AREA_MIN = 120;
-
-function openAreaHeight() {
-  let used = HEADER_SPACE;
-  for (const w of data.workspaces() ?? []) {
-    used += expanded(w) ? CARD_HEIGHT.full : CARD_HEIGHT.compact;
-  }
-  return Math.max(OPEN_AREA_MIN, WINDOW_HEIGHT - used);
-}
-
 sidebar(() =>
   VStack({ spacing: 4 }, [
     header(),
@@ -901,7 +875,6 @@ sidebar(() =>
       Text("NO WORKSPACES")
         .font(10).weight("bold").monospaced().color("tertiary")
         .paddingHorizontal(10).paddingVertical(4)
-        .contextMenu(openAreaMenu())
     ),
     Reorderable(
       {
@@ -919,10 +892,6 @@ sidebar(() =>
         ]);
       }
     ),
-    Rectangle()
-      .fill(tint(WHITE, "01"))
-      .frame(() => ({ maxWidth: "infinity", height: openAreaHeight() }))
-      .contextMenu(openAreaMenu()),
   ]).padding(6),
   { surface: "glass" }
 )

@@ -76,8 +76,7 @@ call.
 
 Click a card to switch to it, click a tile to jump to that terminal, drag
 cards to reorder them, right-click a card for workspace actions (pin, new tab,
-rename, colour, move, close, notifications, copy ID and show in Finder), and
-right-click the open space below to create a new workspace.
+rename, colour, move, close, notifications, copy ID and show in Finder).
 
 ### Header
 
