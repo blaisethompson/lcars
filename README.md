@@ -75,12 +75,9 @@ call.
 <img src="docs/needs-input.png" alt="lcars with an agent waiting for input" width="420">
 
 Click a card to switch to it, click a tile to jump to that terminal, drag
-cards to reorder them, and right-click for pin, mark read, move and close.
-
-**Close…** turns the card into a "Close <name>?" row: ↩ puts the card back,
-the red × closes the workspace. It asks every time because a sidebar can't
-tell whether a workspace has something running, and the confirmed close ends
-any running processes, like closing from cmux's own sidebar.
+cards to reorder them, right-click a card for workspace actions (pin, new tab,
+rename, colour, move, close, notifications, copy ID and show in Finder), and
+right-click the open space below to create a new workspace.
 
 ### Header
 

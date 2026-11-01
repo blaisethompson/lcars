@@ -1,7 +1,7 @@
 // lcars: workspace cards with name, folder and branch, the live agent's
 // status and last message, and a minimap row with one tile per terminal.
 // Click a card to select the workspace, a tile to focus that terminal, and
-// drag cards to reorder. Right-click a card for pin, mark read, new tab, move and close.
+// drag cards to reorder. Right-click a card or the space below for workspace actions.
 //
 // https://github.com/blaisethompson/lcars
 //
@@ -347,10 +347,15 @@ function expanded(w) {
 // State
 // ---------------------------------------------------------------------------
 
-// Sidebars can't show a dialog, and cmux refuses to close a workspace with a
-// running process unless the call is forced. "Close…" asks here instead, and
-// the confirmed close is forced like the built-in sidebar's.
-const [closing, setClosing] = signal(null);
+const WORKSPACE_COLORS = [
+  { label: "Lavender", hex: LCARS.lavender },
+  { label: "Ice", hex: LCARS.ice },
+  { label: "Mauve", hex: LCARS.mauve },
+  { label: "Teal", hex: LCARS.teal },
+  { label: "Sage", hex: LCARS.sage },
+];
+
+const [renaming, setRenaming] = signal(null);
 
 // "auto" expands the selected workspace and any that want attention.
 const MODES = [
@@ -474,10 +479,24 @@ function titleBar(w, size, height, trailing) {
     .frame({ width: 3 * cap, height });
   const pill = HStack({ spacing: 0 }, [
     Rectangle().fill("clear").frame({ width: 0, height }),
-    Text(() => workspaceTitle(w()))
-      .font(size).weight("bold").monospaced()
-      .lineLimit(1).truncation("tail").marquee()
-      .color(() => (selected() ? inkOn(accent(w())) : tint(WHITE, ALPHA.strong))),
+    when(() => renaming() === w()?.id, "edit", () =>
+      TextField(() => w()?.title ?? "", {
+        placeholder: "Workspace name",
+        onSubmit: (nextTitle) => {
+          const title = (nextTitle ?? "").trim();
+          if (title) cmux("workspace.action", { action: "rename", workspace_id: w().id, title });
+          else cmux("workspace.action", { action: "clear_name", workspace_id: w().id });
+          setRenaming(null);
+        },
+        onCancel: () => setRenaming(null),
+      }).font(size).weight("bold").monospaced()
+    ),
+    when(() => renaming() !== w()?.id, "title", () =>
+      Text(() => workspaceTitle(w()))
+        .font(size).weight("bold").monospaced()
+        .lineLimit(1).truncation("tail").marquee()
+        .color(() => (selected() ? inkOn(accent(w())) : tint(WHITE, ALPHA.strong)))
+    ),
     Spacer({ minLength: 0 }),
     ...trailing,
   ])
@@ -591,53 +610,50 @@ function card(w) {
 
 function cardMenu(w) {
   return [
-    Button(() => (w()?.pinned ? "Unpin" : "Pin"), () =>
+    Button(() => (w()?.pinned ? "Unpin Workspace" : "Pin Workspace"), () =>
       cmux("workspace.action", { action: w()?.pinned ? "unpin" : "pin", workspace_id: w().id })),
-    Button(() => (w()?.unread > 0 ? "Mark as Read" : "Mark as Unread"), () =>
-      cmux("workspace.action", { action: w()?.unread > 0 ? "mark_read" : "mark_unread", workspace_id: w().id })),
     Button("New Tab", () =>
       cmux("surface.create", { workspace_id: w().id, focus: true })),
     Divider(),
-    Button("Move to Top", () =>
-      cmux("workspace.action", { action: "move_top", workspace_id: w().id })),
+    Button("Rename Workspace…", () => setRenaming(w().id)),
+    Button("Remove Custom Workspace Name", () =>
+      cmux("workspace.action", { action: "clear_name", workspace_id: w().id })),
+    Menu("Workspace Color", [
+      ...WORKSPACE_COLORS.map((c) =>
+        Button(c.label, () =>
+          cmux("workspace.action", { action: "set_color", workspace_id: w().id, color: c.hex }))
+      ),
+      Divider(),
+      Button("Clear Color", () =>
+        cmux("workspace.action", { action: "clear_color", workspace_id: w().id })),
+    ]),
+    Divider(),
     Button("Move Up", () =>
       cmux("workspace.action", { action: "move_up", workspace_id: w().id })),
     Button("Move Down", () =>
       cmux("workspace.action", { action: "move_down", workspace_id: w().id })),
+    Button("Move to Top", () =>
+      cmux("workspace.action", { action: "move_top", workspace_id: w().id })),
     Divider(),
-    Button("Close…", () => setClosing(w().id)).destructive(),
-  ];
-}
-
-function closeConfirm(w) {
-  const button = (icon, color, fill, hover, onTap) =>
-    Image(icon).font(10).weight("bold").color(color)
-      .paddingHorizontal(8).paddingVertical(4)
-      .fixedSize()
-      .background(fill)
-      .hoverBackground(hover)
-      .cornerRadius(6)
-      .cursor("pointer")
-      .onTap(onTap);
-  return HStack({ spacing: 6 }, [
-    RoundedRectangle({ cornerRadius: 2 })
-      .fill(LCARS.red)
-      .frame({ width: 6, height: 26 }),
-    Text(() => "Close " + workspaceTitle(w()) + "?")
-      .font(12).weight("semibold").monospaced()
-      .lineLimit(1).truncation("tail"),
-    Spacer({ minLength: 4 }),
-    button("arrow.uturn.backward", "secondary", tint(WHITE, ALPHA.wash), tint(WHITE, ALPHA.button), () => setClosing(null)),
-    button("xmark", "white", tint(LCARS.red, ALPHA.strong), LCARS.red, () => {
-      setClosing(null);
-      cmux("workspace.close", { workspace_id: w().id, force: true });
+    Button("Close Workspace", () =>
+      cmux("workspace.close", { workspace_id: w().id, force: true })).destructive(),
+    Button("Close Other Workspaces", () =>
+      cmux("workspace.action", { action: "close_others", workspace_id: w().id, force: true })).destructive(),
+    Button("Close Workspaces Below", () =>
+      cmux("workspace.action", { action: "close_below", workspace_id: w().id, force: true })).destructive(),
+    Button("Close Workspaces Above", () =>
+      cmux("workspace.action", { action: "close_above", workspace_id: w().id, force: true })).destructive(),
+    Divider(),
+    Button(() => (w()?.unread > 0 ? "Mark Workspace as Read" : "Mark Workspace as Unread"), () =>
+      cmux("workspace.action", { action: w()?.unread > 0 ? "mark_read" : "mark_unread", workspace_id: w().id })),
+    Button("Clear Notifications", () =>
+      cmux("notification.clear", { workspace_id: w().id })),
+    Divider(),
+    Button("Copy Workspace ID", () => clipboard.write(w().id)),
+    Button("Show in Finder", () => {
+      if (w()?.directory) openURL("file://" + encodeURI(w().directory));
     }),
-  ])
-    .paddingVertical(5)
-    .paddingHorizontal(6)
-    .cornerRadius(7)
-    .background(tint(LCARS.red, ALPHA.wash))
-    .frame({ maxWidth: "infinity" });
+  ];
 }
 
 // Compact minimap tiles all share one square slot, so marks fall in the same
@@ -848,6 +864,23 @@ function header() {
   ]).frame({ height: BAR }).paddingHorizontal(6).paddingVertical(2);
 }
 
+function openAreaMenu() {
+  return [
+    Button("New Workspace", () => cmux("workspace.create", {})),
+  ];
+}
+
+// The sidebar sits inside a vertical ScrollView, where a Spacer collapses,
+// so the open space below the cards is a transparent shape tall enough to
+// reach the bottom of the window and catch right-clicks for "New Workspace".
+function openAreaHeight() {
+  let used = 40;
+  for (const w of data.workspaces() ?? []) {
+    used += expanded(w) ? 110 : 42;
+  }
+  return Math.max(120, 900 - used);
+}
+
 sidebar(() =>
   VStack({ spacing: 4 }, [
     header(),
@@ -855,6 +888,7 @@ sidebar(() =>
       Text("NO WORKSPACES")
         .font(10).weight("bold").monospaced().color("tertiary")
         .paddingHorizontal(10).paddingVertical(4)
+        .contextMenu(openAreaMenu())
     ),
     Reorderable(
       {
@@ -867,13 +901,15 @@ sidebar(() =>
         const id = item().id;
         const w = () => findWorkspace(id) ?? item();
         return VStack({ spacing: 0 }, [
-          when(() => closing() === id, "close", () => closeConfirm(w)),
-          when(() => closing() !== id && !expanded(w()), "compact", () => compactCard(w)),
-          when(() => closing() !== id && expanded(w()), "full", () => card(w)),
+          when(() => !expanded(w()), "compact", () => compactCard(w)),
+          when(() => expanded(w()), "full", () => card(w)),
         ]);
       }
     ),
-    Spacer(),
+    Rectangle()
+      .fill(tint(WHITE, "01"))
+      .frame(() => ({ maxWidth: "infinity", height: openAreaHeight() }))
+      .contextMenu(openAreaMenu()),
   ]).padding(6),
   { surface: "glass" }
 )
