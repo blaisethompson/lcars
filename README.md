@@ -54,7 +54,7 @@ periwinkle and gold are kept for status:
 - **Terminal tiles**: one line per terminal with the agent's mark, the
   terminal's name and an unread dot. The shape of the mark says which agent
   it is: ✱ Claude, ▣ OpenCode, ⬢ Codex, ✦ Antigravity, ◆ anything else. Its
-  colour is the status, and it turns while the agent works. OpenCode's "OC | "
+  colour is the status, and it pulses while the agent works. OpenCode's "OC | "
   title prefix and Codex's title spinner are left off tile and workspace names.
   A tile that needs input gets a red border instead of the
   unread dot, and the focused terminal is highlighted.
@@ -67,9 +67,9 @@ not shown.
 
 Claude Code doesn't report an interrupted turn (Esc), so cmux keeps such an
 agent *Working* until your next prompt. Agents report on every tool call, so
-after two minutes without a report lcars stops the mark turning and shows
+after two minutes without a report lcars stops the mark pulsing and shows
 *Quiet 2m* in dimmer amber. It never calls the agent idle, because a long
-build or a long reply is silent too; the mark turns again at the next tool
+build or a long reply is silent too; the mark pulses again at the next tool
 call.
 
 <img src="docs/needs-input.png" alt="lcars with an agent waiting for input" width="420">

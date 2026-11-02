@@ -45,6 +45,12 @@ restore() {
 }
 trap restore EXIT
 
+# Working marks are dim on odd seconds. cmux's clock can lag by a fraction of a
+# second, so wait until late in an even one.
+wait_for_bright_marks() {
+  perl -MTime::HiRes=time,sleep -e 'my $t = time; sleep(2.8 - ($t - 2 * int($t / 2)))'
+}
+
 # build_demo <selected workspace id>: write the demo sidebar and validate it
 build_demo() {
   {
@@ -59,9 +65,7 @@ shoot() {
   build_demo "$1"
   cmux sidebar select lcars-demo >/dev/null
   sleep 2
-  # Working marks turn one step per second; shoot just before the next step,
-  # once the last one has settled, so they are caught upright.
-  perl -MTime::HiRes=time,sleep -e 'sleep(1.8 - (time - int(time)))'
+  wait_for_bright_marks
   cmux shot --region "0,30,${width},560" --out "$2" >/dev/null
   echo "Wrote $2"
 }
@@ -89,7 +93,7 @@ theme_shot() {
   build_demo checkout
   cmux sidebar select lcars-demo >/dev/null
   sleep 3
-  perl -MTime::HiRes=time,sleep -e 'sleep(1.8 - (time - int(time)))'
+  wait_for_bright_marks
   cmux shot --max-width 1600 --out "$out"
 }
 

@@ -46,23 +46,19 @@ const STATUS = {
 // The mark's shape says which agent it is; its colour says what the agent is
 // doing (STATUS[...].color), so the mark, the status dot and the status text
 // always agree. A tile also gets a red border when its agent needs input.
-// `step` is the glyph's symmetry angle: a working mark turns one step per
-// clock tick, so it always comes to rest looking upright.
 const AGENTS = {
-  claude: { glyph: "✱", step: 60 },
-  opencode: { glyph: "▣", step: 90 },
-  // A ⬢ character sits off its own centre and wobbles as it turns, so
-  // Codex's hexagon is the SF Symbol, which turns about its middle. Symbols
-  // draw larger than these characters, hence the smaller size.
-  codex: { symbol: "hexagon.fill", step: 60, scale: 0.65 },
-  antigravity: { symbol: "sparkle", step: 90, scale: 0.75 },
+  claude: { glyph: "✱" },
+  opencode: { glyph: "▣" },
+  // A ⬢ character sits off its own centre, so Codex's hexagon is the SF
+  // Symbol. Symbols draw larger than these characters, hence the smaller size.
+  codex: { symbol: "hexagon.fill", scale: 0.65 },
+  antigravity: { symbol: "sparkle", scale: 0.75 },
 };
-const OTHER_AGENT = { glyph: "◆", step: 90 };
+const OTHER_AGENT = { glyph: "◆" };
 const agentMark = (a) => AGENTS[a?.kind] ?? OTHER_AGENT;
 const markSize = (a, size) => Math.round(size * (agentMark(a).scale ?? 1));
 
 // An agent's mark at `size`: its character, or its SF Symbol when it has one.
-// The two share one rotation, applied by the caller.
 function markView(agent, size, color) {
   const mark = () => (agent() ? agentMark(agent()) : null);
   return ZStack({}, [
@@ -77,10 +73,13 @@ function markView(agent, size, color) {
 // sit back from working and needs-input marks; any lower and it is hard to read.
 const IDLE_OPACITY = 0.75;
 
+// How far a working agent's mark fades on each pulse.
+const PULSE_OPACITY = 0.55;
+
 // Claude Code doesn't report an interrupted turn, so an agent can stay
 // "working" until the next prompt. Hooks fire on every tool call, so a
 // working agent that has been silent this long is shown as quiet: dimmer
-// amber, and its mark stops turning, but it is never called idle, since a
+// amber, and its mark stops pulsing, but it is never called idle, since a
 // long build or a long reply is silent too.
 const QUIET_AFTER = 120;
 
@@ -189,23 +188,13 @@ function statusOf(a) {
   return { label: meta?.label ?? "", color: meta?.color ?? "clear" };
 }
 
-// Rotation binding for a tile's mark. There are no timers, so it turns one
-// step per ~1s clock tick while the agent works; the angle only grows, so
-// the spring never spins backwards, and it holds still otherwise.
-function spin(agent) {
-  let angle = 0;
-  let tick = null;
-  return () => {
-    const a = agent();
-    const now = Math.floor(epoch());
-    if (a?.status === "working" && !quiet(a) && now !== tick) {
-      if (tick !== null) angle += agentMark(a).step;
-      tick = now;
-    } else if (a?.status !== "working" || quiet(a)) {
-      tick = null;
-    }
-    return angle;
-  };
+// Opacity multiplier for a mark: it pulses once per two clock ticks while the
+// agent works, and holds still otherwise. Marks used to turn, but cmux
+// spring-animates rotation, which kept its layout busy all the time: about 19%
+// of the main thread at rest, against 1% for this.
+function pulse(agent) {
+  const a = agent();
+  return a?.status === "working" && !quiet(a) && Math.floor(epoch()) % 2 ? PULSE_OPACITY : 1;
 }
 
 // Renders `view(value)` only while `value()` is truthy.
@@ -346,7 +335,7 @@ function cleanMessage(text) {
 
 // Agents decorate their terminal titles: OpenCode prefixes "OC | ", and
 // Codex animates a braille spinner (⠋ ⠙ ⠹ …) in front while it works. The
-// turning mark already says both, so they are left off wherever a title is shown.
+// pulsing mark already says both, so they are left off wherever a title is shown.
 const cleanTitle = (title) => String(title ?? "")
   .replace(/^[\s\u2800-\u28FF]+/, "")
   .replace(/^OC\s*\|\s*/, "")
@@ -448,11 +437,10 @@ function tile(w, t) {
   const live = () => focused() && !!w()?.selected;
   const needsInput = () => agent()?.status === "needs_input";
   return HStack({ spacing: 4 }, [
-    // Fixed square, so the label doesn't shift as the mark turns.
+    // Fixed square, so the label lines up whatever the mark's shape.
     markView(agent, fontSize("marks"), () => (agent() ? statusOf(agent()).color : "clear"))
-      .opacity(() => (agent()?.status === "idle" ? IDLE_OPACITY : 1))
-      .frame(() => ({ width: agent() ? fontSize("marks", 20 / 17) : 0, height: fontSize("marks", 20 / 17) }))
-      .rotation(spin(agent)),
+      .opacity(() => (agent()?.status === "idle" ? IDLE_OPACITY : 1) * pulse(agent))
+      .frame(() => ({ width: agent() ? fontSize("marks", 20 / 17) : 0, height: fontSize("marks", 20 / 17) })),
     Text(() => tabLabel(w(), t()))
       .font(fontSize("tile")).monospaced()
       .lineLimit(1)
@@ -734,10 +722,9 @@ function miniTile(w, t) {
     RoundedRectangle({ cornerRadius: 2 })
       .fill(() => (agent() ? "clear" : tint(accent(w()), focused() ? ALPHA.lit : ALPHA.live)))
       .frame({ width: plainSize(), height: plainSize() }),
-    // Large enough to see turn, small enough to fit the slot once turned.
+    // Large enough to read, small enough to fit the slot.
     markView(agent, fontSize("miniMarks"), () => (needsInput() ? "black" : agent() ? statusOf(agent()).color : "clear"))
-      .opacity(() => (focused() || needsInput() ? 1 : MINI_REST_OPACITY))
-      .rotation(spin(agent)),
+      .opacity(() => (focused() || needsInput() ? 1 : MINI_REST_OPACITY) * pulse(agent)),
   ])
     .borderColor(() => (t()?.hasUnread ? LCARS.red : "clear"))
     .borderWidth(1)
