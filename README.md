@@ -78,6 +78,13 @@ Click a card to switch to it, click a tile to jump to that terminal, drag
 cards to reorder them, right-click a card for workspace actions (pin, new tab,
 rename, colour, move, close, notifications, copy ID and show in Finder).
 
+Right-click the header for **Text Size**: **All Text** scales everything, and
+each kind of text (workspace names, folder and branch, agent messages and so
+on) has its own size. A sidebar has nowhere to save settings, so these reset
+when the sidebar reloads. To keep them, set `FONT_SCALE` and `TEXT_SIZES` near
+the top of `lcars.js`; uninstall then keeps your edited copy and says so, so
+delete it by hand afterwards.
+
 ### Header
 
 The header shows the workspace count, then two readouts that appear only

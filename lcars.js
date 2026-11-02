@@ -101,9 +101,46 @@ const STRIPE = 6;
 const ELBOW_INSET = STRIPE + 8;
 const ELBOW_RADIUS = 5;
 
-// Radius of an LCARS pill end, and the height of the header blocks.
-const BAR = 20;
-const PILL = BAR / 2;
+// Text sizes. Each kind of text has its own size in points, and FONT_SCALE
+// multiplies them all. Change these to set your sizes for good; the header's
+// right-click menu changes them until the sidebar next reloads, since a
+// sidebar has nowhere to save them. What sits beside the text (bars, marks'
+// slots, dots) grows with it.
+const FONT_SCALE = 1;
+const TEXT_SIZES = [
+  { id: "header", label: "Header", size: 11 },
+  { id: "title", label: "Workspace Names", size: 15 },
+  { id: "compactTitle", label: "Workspace Names (List)", size: 13 },
+  { id: "badge", label: "Unread and Shortcut", size: 10 },
+  { id: "compactBadge", label: "Unread and Shortcut (List)", size: 9 },
+  { id: "details", label: "Folder and Branch", size: 11 },
+  { id: "compactDetails", label: "Folder and Branch (List)", size: 10 },
+  { id: "session", label: "Agent Names", size: 11 },
+  { id: "sessionStatus", label: "Agent Status", size: 10 },
+  { id: "message", label: "Agent Messages", size: 11 },
+  { id: "tile", label: "Terminal Names", size: 10 },
+  { id: "marks", label: "Agent Marks", size: 17 },
+  { id: "miniMarks", label: "Agent Marks (List)", size: 14 },
+];
+const MIN_SCALE = 0.8;
+const MAX_SCALE = 1.6;
+const SCALE_STEP = 0.1;
+const MIN_SIZE = 6;
+const MAX_SIZE = 30;
+
+const defaultSizes = () => Object.fromEntries(TEXT_SIZES.map((t) => [t.id, t.size]));
+const [textScale, setTextScale] = signal(FONT_SCALE);
+const [textSizes, setTextSizes] = signal(defaultSizes());
+
+// A size in points for a kind of text; `factor` is for what's sized from it.
+// Views read this once, when they are built, and changing a size rebuilds
+// them all (see the end of this file), because not everything that depends on
+// it can be a live binding: the spacing that forms the pill ends, for one.
+const fontSize = (id, factor = 1) => textSizes()[id] * textScale() * factor;
+
+// Height of the header blocks, and the radius of an LCARS pill end.
+const barHeight = () => fontSize("header", 20 / 11);
+const pillRadius = () => barHeight() / 2;
 
 const WHITE = "#FFFFFF";
 
@@ -379,14 +416,14 @@ function focusTerminal(w, surfaceId) {
 function sessionRow(w, s) {
   const meta = () => statusOf(s().agent);
   return HStack({ spacing: 6 }, [
-    Circle({ size: 6 }).fill(() => meta().color),
+    Circle({ size: fontSize("session", 6 / 11) }).fill(() => meta().color),
     Text(() => s().label)
-      .font(11).monospaced().color("secondary")
+      .font(fontSize("session")).monospaced().color("secondary")
       .lineLimit(1).truncation("tail"),
     Spacer({ minLength: 4 }),
-    Text(() => meta().label).font(10).monospaced().color(() => meta().color).fixedSize(),
+    Text(() => meta().label).font(fontSize("sessionStatus")).monospaced().color(() => meta().color).fixedSize(),
     Text(() => sessionAge(s().agent))
-      .font(10).monospaced()
+      .font(fontSize("sessionStatus")).monospaced()
       .color(() => (quiet(s().agent) ? meta().color : "tertiary"))
       .fixedSize(),
   ])
@@ -410,18 +447,18 @@ function tile(w, t) {
   const needsInput = () => agent()?.status === "needs_input";
   return HStack({ spacing: 4 }, [
     // Fixed square, so the label doesn't shift as the mark turns.
-    markView(agent, 17, () => (agent() ? statusOf(agent()).color : "clear"))
+    markView(agent, fontSize("marks"), () => (agent() ? statusOf(agent()).color : "clear"))
       .opacity(() => (agent()?.status === "idle" ? IDLE_OPACITY : 1))
-      .frame(() => ({ width: agent() ? 20 : 0, height: 20 }))
+      .frame(() => ({ width: agent() ? fontSize("marks", 20 / 17) : 0, height: fontSize("marks", 20 / 17) }))
       .rotation(spin(agent)),
     Text(() => tabLabel(w(), t()))
-      .font(10).monospaced()
+      .font(fontSize("tile")).monospaced()
       .lineLimit(1)
       .truncation("tail")
       .color(() => (live() ? "primary" : "secondary")),
     Spacer({ minLength: 0 }),
     // A tile that needs input already has a red border, so no dot there.
-    Circle({ size: 6 }).fill(() => (t()?.hasUnread && !needsInput() ? LCARS.red : "clear")),
+    Circle({ size: fontSize("tile", 0.6) }).fill(() => (t()?.hasUnread && !needsInput() ? LCARS.red : "clear")),
   ])
     // Padding sets the height (the 20pt mark slot plus 5 above and below);
     // a frame height here doesn't stretch an HStack.
@@ -535,24 +572,24 @@ function card(w) {
 
   const body = VStack({ spacing: 4 }, [
     // Title row: name, then pin / unread badge.
-    titleBar(w, 15, 22, [
+    titleBar(w, fontSize("title"), fontSize("title", 22 / 15), [
       when(() => (w()?.pinned ? "pin" : ""), "pin", () =>
-        Image("pin.fill").font(9).color(barInk(w, "tertiary")).paddingLeading(6)
+        Image("pin.fill").font(fontSize("badge", 0.9)).color(barInk(w, "tertiary")).paddingLeading(6)
       ),
-      unreadBlock(w, 10).paddingLeading(() => ((w()?.unread ?? 0) > 0 ? 6 : 0)),
-      shortcutHint(w, 10, barInk(w, "secondary"))
+      unreadBlock(w, fontSize("badge")).paddingLeading(() => ((w()?.unread ?? 0) > 0 ? 6 : 0)),
+      shortcutHint(w, fontSize("badge"), barInk(w, "secondary"))
         .paddingLeading(() => ((w()?.index ?? 9) < 9 ? 6 : 0)),
     ]),
     VStack({ spacing: 4 }, [
       // Folder and branch.
       HStack({ spacing: 4 }, [
-        Image("folder").font(9).color("tertiary"),
-        Text(folder).font(11).monospaced().color("secondary").lineLimit(1).truncation("tail"),
-        Image("arrow.triangle.branch").font(9).color("tertiary")
+        Image("folder").font(fontSize("details", 9 / 11)).color("tertiary"),
+        Text(folder).font(fontSize("details")).monospaced().color("secondary").lineLimit(1).truncation("tail"),
+        Image("arrow.triangle.branch").font(fontSize("details", 9 / 11)).color("tertiary")
           .opacity(() => (branch() ? 1 : 0)),
-        Text(branch).font(11).monospaced().color("secondary")
+        Text(branch).font(fontSize("details")).monospaced().color("secondary")
           .lineLimit(1).truncation("middle"),
-        Circle({ size: 5 }).fill(() => (branch() && w()?.dirty ? LCARS.gold : "clear")),
+        Circle({ size: fontSize("details", 5 / 11) }).fill(() => (branch() && w()?.dirty ? LCARS.gold : "clear")),
         Spacer({ minLength: 0 }),
       ]),
 
@@ -567,13 +604,13 @@ function card(w) {
       // Last agent message.
       when(message, "message", (m) =>
         HStack({ spacing: 0 }, [
-          Text(() => m()).font(11).monospaced().color("secondary").lineLimit(2).truncation("tail"),
+          Text(() => m()).font(fontSize("message")).monospaced().color("secondary").lineLimit(2).truncation("tail"),
           Spacer({ minLength: 0 }),
         ])
       ),
 
       // Minimap: one tile per terminal.
-      minimap(w, tile, 4, 10),
+      minimap(w, tile, 4, fontSize("tile")),
     ]).paddingLeading(ELBOW_INSET),
   ])
     .paddingVertical(6)
@@ -601,7 +638,7 @@ function renameRow(w) {
   return HStack({ spacing: 6 }, [
     RoundedRectangle({ cornerRadius: 2 })
       .fill(() => accent(w()))
-      .frame({ width: 6, height: 26 }),
+      .frame({ width: 6, height: fontSize("compactTitle", 2) }),
     TextField(() => w()?.title ?? "", {
       placeholder: "Workspace name",
       onSubmit: (nextTitle) => {
@@ -615,7 +652,7 @@ function renameRow(w) {
         setRenaming(null);
       },
       onCancel: () => setRenaming(null),
-    }).font(13).weight("bold").monospaced(),
+    }).font(fontSize("compactTitle")).weight("bold").monospaced(),
   ])
     .paddingVertical(5)
     .paddingHorizontal(6)
@@ -677,8 +714,8 @@ function cardMenu(w) {
 // mark in its status colour (black on a red square when it needs input); any
 // other terminal is a smaller square in the workspace tint, centred in the
 // slot. Both are brighter on the workspace's focused tab and dimmer at rest.
-const SLOT = 16;
-const PLAIN = 8;
+const slotSize = () => fontSize("miniMarks", 16 / 14);
+const plainSize = () => fontSize("miniMarks", 8 / 14);
 const MINI_GAP = 2;
 const MINI_REST_OPACITY = 0.5;
 
@@ -691,12 +728,12 @@ function miniTile(w, t) {
   return ZStack([
     RoundedRectangle({ cornerRadius: 3 })
       .fill(() => (needsInput() ? LCARS.red : "clear"))
-      .frame({ width: SLOT, height: SLOT }),
+      .frame({ width: slotSize(), height: slotSize() }),
     RoundedRectangle({ cornerRadius: 2 })
       .fill(() => (agent() ? "clear" : tint(accent(w()), focused() ? ALPHA.lit : ALPHA.live)))
-      .frame({ width: PLAIN, height: PLAIN }),
+      .frame({ width: plainSize(), height: plainSize() }),
     // Large enough to see turn, small enough to fit the slot once turned.
-    markView(agent, 14, () => (needsInput() ? "black" : agent() ? statusOf(agent()).color : "clear"))
+    markView(agent, fontSize("miniMarks"), () => (needsInput() ? "black" : agent() ? statusOf(agent()).color : "clear"))
       .opacity(() => (focused() || needsInput() ? 1 : MINI_REST_OPACITY))
       .rotation(spin(agent)),
   ])
@@ -721,8 +758,8 @@ function miniMap(w) {
     ),
     when(() => (extra() > 0 ? "+" + extra() : ""), "extra", (n) =>
       ZStack([
-        Rectangle().fill("clear").frame({ width: SLOT, height: SLOT }),
-        Text(() => n()).font(9).monospaced().color("secondary").fixedSize(),
+        Rectangle().fill("clear").frame({ width: slotSize(), height: slotSize() }),
+        Text(() => n()).font(fontSize("compactDetails", 0.9)).monospaced().color("secondary").fixedSize(),
       ])
     ),
   ])
@@ -740,12 +777,12 @@ function compactCard(w) {
     VStack({ spacing: 2 }, [
       // Pin, unread and ⌘ hint take no room, gaps included, until they show,
       // so the name keeps the width.
-      titleBar(w, 13, 18, [
+      titleBar(w, fontSize("compactTitle"), fontSize("compactTitle", 18 / 13), [
         when(() => (w()?.pinned ? "pin" : ""), "pin", () =>
-          Image("pin.fill").font(8).color(barInk(w, "tertiary")).paddingLeading(5)
+          Image("pin.fill").font(fontSize("compactBadge", 8 / 9)).color(barInk(w, "tertiary")).paddingLeading(5)
         ),
-        unreadBlock(w, 9).paddingLeading(() => ((w()?.unread ?? 0) > 0 ? 5 : 0)),
-        shortcutHint(w, 9, barInk(w, "secondary"))
+        unreadBlock(w, fontSize("compactBadge")).paddingLeading(() => ((w()?.unread ?? 0) > 0 ? 5 : 0)),
+        shortcutHint(w, fontSize("compactBadge"), barInk(w, "secondary"))
           .paddingLeading(() => ((w()?.index ?? 9) < 9 ? 5 : 0)),
       ]),
       // As on a full card, with the folder and branch icons left out for
@@ -753,15 +790,15 @@ function compactCard(w) {
       // narrow sidebar, and the minimap sits at the right end.
       HStack({ spacing: 4 }, [
         Text(folder)
-          .font(10).monospaced().color("secondary")
+          .font(fontSize("compactDetails")).monospaced().color("secondary")
           .lineLimit(1).truncation("tail"),
         Text(() => (branch() ? "·" : ""))
-          .font(10).monospaced().color("secondary").fixedSize(),
+          .font(fontSize("compactDetails")).monospaced().color("secondary").fixedSize(),
         Text(branch)
-          .font(10).monospaced().color("secondary")
+          .font(fontSize("compactDetails")).monospaced().color("secondary")
           .lineLimit(1).truncation("middle"),
         when(() => (branch() && w()?.dirty ? "dirty" : ""), "dirty", () =>
-          Circle({ size: 5 }).fill(LCARS.gold).fixedSize()
+          Circle({ size: fontSize("compactDetails", 0.5) }).fill(LCARS.gold).fixedSize()
         ),
         Spacer({ minLength: 0 }),
         miniMap(w),
@@ -784,7 +821,7 @@ function compactCard(w) {
 // zero-width strut, which as a shape does keep its frame, sets the height.
 function barBlock(content, fill) {
   return HStack({ spacing: 0 }, [
-    Rectangle().fill("clear").frame({ width: 0, height: BAR }),
+    Rectangle().fill("clear").frame({ width: 0, height: barHeight() }),
     content,
   ]).background(fill);
 }
@@ -793,9 +830,9 @@ function barBlock(content, fill) {
 // over one inner end to square it off. `squareFirst` puts the square at the
 // left, where the block meets the bar; otherwise it ends the block at the right.
 function pillBlock(fill, content, squareFirst) {
-  const square = Rectangle().fill(fill).frame({ width: PILL, height: BAR });
-  const pill = barBlock(content, fill).cornerRadius(PILL);
-  return HStack({ spacing: -PILL }, squareFirst ? [square, pill] : [pill, square]);
+  const square = Rectangle().fill(fill).frame({ width: pillRadius(), height: barHeight() });
+  const pill = barBlock(content, fill).cornerRadius(pillRadius());
+  return HStack({ spacing: -pillRadius() }, squareFirst ? [square, pill] : [pill, square]);
 }
 
 // The mode button as an LCARS block in `fill`: square at the left, where
@@ -803,11 +840,11 @@ function pillBlock(fill, content, squareFirst) {
 function modeBlock(fill) {
   return pillBlock(fill,
     HStack({ spacing: 4 }, [
-      Image(() => mode().icon).font(10).weight("bold").color("black"),
-      Text(() => mode().label.toUpperCase()).font(10).weight("bold").monospaced().color("black")
+      Image(() => mode().icon).font(fontSize("header", 10 / 11)).weight("bold").color("black"),
+      Text(() => mode().label.toUpperCase()).font(fontSize("header", 10 / 11)).weight("bold").monospaced().color("black")
         .lineLimit(1).fixedSize(),
     ])
-      .paddingLeading(PILL)
+      .paddingLeading(pillRadius())
       .paddingTrailing(10)
       .fixedSize(),
     true);
@@ -833,9 +870,9 @@ function agentCount(status) {
 function readoutBlock(count, icon, fill, onTap) {
   return when(() => (count() > 0 ? count() : 0), icon, (n) => {
     const block = HStack({ spacing: 2 }, [
-      Image(icon).font(7).weight("bold").color("black"),
+      Image(icon).font(fontSize("header", 7 / 11)).weight("bold").color("black"),
       Text(() => String(n()).padStart(2, "0"))
-        .font(11).weight("bold").monospaced().color("black")
+        .font(fontSize("header")).weight("bold").monospaced().color("black")
         .lineLimit(1),
     ])
       .paddingHorizontal(5)
@@ -852,18 +889,61 @@ function selectNeedsInput() {
   if (w) cmux("workspace.select", { workspace_id: w.id });
 }
 
+// Moves the overall scale a step, keeping it in range and free of rounding
+// drift.
+function stepTextScale(direction) {
+  const next = Math.round((textScale() + direction * SCALE_STEP) * 10) / 10;
+  setTextScale(Math.min(MAX_SCALE, Math.max(MIN_SCALE, next)));
+}
+
+function setTextSize(id, size) {
+  setTextSizes({ ...textSizes(), [id]: Math.min(MAX_SIZE, Math.max(MIN_SIZE, size)) });
+}
+
+// Larger / Smaller / Default for one kind of text.
+function textSizeMenu(t) {
+  return Menu(() => t.label + " (" + textSizes()[t.id] + " pt)", [
+    Button("Larger", () => setTextSize(t.id, textSizes()[t.id] + 1)),
+    Button("Smaller", () => setTextSize(t.id, textSizes()[t.id] - 1)),
+    Divider(),
+    Button("Default", () => setTextSize(t.id, t.size)),
+  ]);
+}
+
+function headerMenu() {
+  return [
+    Menu("Text Size", [
+      Menu(() => "All Text (" + Math.round(textScale() * 100) + "%)", [
+        Button("Larger", () => stepTextScale(1)),
+        Button("Smaller", () => stepTextScale(-1)),
+        Divider(),
+        Button("Default", () => setTextScale(FONT_SCALE)),
+      ]),
+      Divider(),
+      ...TEXT_SIZES.map(textSizeMenu),
+      Divider(),
+      Button("Reset All", () => {
+        setTextScale(FONT_SCALE);
+        setTextSizes(defaultSizes());
+      }),
+    ]),
+  ];
+}
+
 // An LCARS header bar: solid colour blocks with black lettering, pill ends
 // on the outside and square ends where blocks meet.
 function header() {
   return HStack({ spacing: 3 }, [
     pillBlock(LCARS.amber,
-      Text("WORKSPACES").font(11).weight("bold").monospaced().color("black").lineLimit(1)
-        .paddingLeading(10).paddingTrailing(PILL)
-        .fixedSize(),
-      false),
+      // The one block that gives way, so that at a large text size the header
+      // stays inside the sidebar instead of drawing over the terminal.
+      Text("WORKSPACES").font(fontSize("header")).weight("bold").monospaced().color("black")
+        .lineLimit(1).truncation("tail")
+        .paddingLeading(10).paddingTrailing(pillRadius()),
+      false).layoutPriority(1),
     barBlock(
       Text(() => String((data.workspaces() ?? []).length).padStart(2, "0"))
-        .font(11).weight("bold").monospaced().color("black")
+        .font(fontSize("header")).weight("bold").monospaced().color("black")
         .paddingHorizontal(5)
         .fixedSize(),
       LCARS.peach),
@@ -871,40 +951,44 @@ function header() {
     // lavender filler gives up the room, so the mode button is never squeezed.
     readoutBlock(() => agentCount("needs_input"), "exclamationmark", LCARS.red, selectNeedsInput),
     readoutBlock(() => agentCount("working"), "play.fill", LCARS.amber, null),
-    Rectangle().fill(LCARS.lavender).frame({ maxWidth: "infinity", height: BAR }),
+    Rectangle().fill(LCARS.lavender).frame({ maxWidth: "infinity", height: barHeight() }),
     // The lit copy shows on hover. A square block under each pill's inner
     // end squares it off, so it is drawn in the same colour as the pill.
     ZStack({}, [modeBlock(LCARS.slate), modeBlock(LCARS.periwinkle).showOnHover()])
       .cursor("pointer")
       .onTap(() => setModeIndex((modeIndex() + 1) % MODES.length)),
-  ]).frame({ height: BAR }).paddingHorizontal(6).paddingVertical(2);
+  ]).frame({ height: barHeight() }).paddingHorizontal(6).paddingVertical(2)
+    .contextMenu(headerMenu());
 }
 
+// Keyed on the text sizes, so changing one rebuilds every view at the new size.
 sidebar(() =>
-  VStack({ spacing: 4 }, [
-    header(),
-    when(() => ((data.workspaces() ?? []).length === 0 ? "none" : ""), "empty", () =>
-      Text("NO WORKSPACES")
-        .font(10).weight("bold").monospaced().color("tertiary")
-        .paddingHorizontal(10).paddingVertical(4)
-    ),
-    Reorderable(
-      {
-        items: () => data.workspaces() ?? [],
-        key: (w) => w.id,
-        spacing: 2,
-        onMove: (id, index) => cmux("workspace.reorder", { workspace_id: id, index: index }),
-      },
-      (item) => {
-        const id = item().id;
-        const w = () => findWorkspace(id) ?? item();
-        return VStack({ spacing: 0 }, [
-          when(() => renaming() === id, "rename", () => renameRow(w)),
-          when(() => renaming() !== id && !expanded(w()), "compact", () => compactCard(w)),
-          when(() => renaming() !== id && expanded(w()), "full", () => card(w)),
-        ]);
-      }
-    ),
-  ]).padding(6),
+  ForEach({ items: () => [textScale() + JSON.stringify(textSizes())], key: (k) => k }, () =>
+    VStack({ spacing: 4 }, [
+      header(),
+      when(() => ((data.workspaces() ?? []).length === 0 ? "none" : ""), "empty", () =>
+        Text("NO WORKSPACES")
+          .font(fontSize("header", 10 / 11)).weight("bold").monospaced().color("tertiary")
+          .paddingHorizontal(10).paddingVertical(4)
+      ),
+      Reorderable(
+        {
+          items: () => data.workspaces() ?? [],
+          key: (w) => w.id,
+          spacing: 2,
+          onMove: (id, index) => cmux("workspace.reorder", { workspace_id: id, index: index }),
+        },
+        (item) => {
+          const id = item().id;
+          const w = () => findWorkspace(id) ?? item();
+          return VStack({ spacing: 0 }, [
+            when(() => renaming() === id, "rename", () => renameRow(w)),
+            when(() => renaming() !== id && !expanded(w()), "compact", () => compactCard(w)),
+            when(() => renaming() !== id && expanded(w()), "full", () => card(w)),
+          ]);
+        }
+      ),
+    ]).padding(6)
+  ),
   { surface: "glass" }
 )
