@@ -3,6 +3,9 @@
 You have been asked to install **lcars**, a custom sidebar for the cmux
 terminal app. Follow these steps in order.
 
+If you were asked to change lcars's text sizes instead, go to
+[Adjusting text sizes](#adjusting-text-sizes).
+
 ## 1. Check prerequisites
 
 - `cmux` must be on `PATH` (`command -v cmux`). If it is missing, stop and tell
@@ -113,6 +116,41 @@ see the themes. (Antigravity / `agy` has no custom theme files; its default
 ```sh
 rm -rf "$tmp"
 ```
+
+## Adjusting text sizes
+
+If you are asked to make lcars's text bigger or smaller, edit the installed
+sidebar, `~/.config/cmux/sidebars/lcars.js`. Near the top are `FONT_SCALE`,
+which multiplies everything, and `TEXT_SIZES`, which has a size in points and a
+plain-English `label` for each kind of text. Match what the user asks for to a
+label. "Everything bigger" means `FONT_SCALE`; a single kind means its `size`.
+Bars, icons and dots follow on their own, so don't change anything else.
+
+```sh
+f=~/.config/cmux/sidebars/lcars.js
+grep -n -A15 '^const FONT_SCALE' "$f"                     # current values
+sed -i '' 's/^const FONT_SCALE = .*/const FONT_SCALE = 1.2;/' "$f"
+sed -i '' '/id: "title"/s/size: [0-9.]*/size: 18/' "$f"
+cmux sidebar validate lcars                               # must say OK
+```
+
+cmux reloads the sidebar when the file is saved. If `validate` reports an
+error, fix it straight away: until then the sidebar shows that error instead of
+the workspaces. Look at the result with `cmux shot --label lcars` if you can.
+
+- If `TEXT_SIZES` isn't there, the installed copy predates this feature. Tell
+  the user, and with their yes, update it by following steps 2 and 3 first.
+- If the file is a symlink (`ls -l`), it is a development setup and the edit
+  changes their checkout. Tell them it will show up in `git status`.
+- A scale from 0.8 to 1.6 is what the header's menu allows. Larger sizes work,
+  but more text gets cut short unless the sidebar is widened.
+- Sizes set from the header's right-click menu aren't stored anywhere you can
+  read, and are lost when you save the file. The menu shows the current values,
+  so ask the user for them if they want to keep them.
+
+Tell the user two things about edits: re-running `install.sh` replaces them
+(the old file is kept as a `.bak`, and the output names it), and uninstall keeps
+the edited file and says so, so it needs deleting by hand afterwards.
 
 ## Uninstall
 

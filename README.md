@@ -85,6 +85,9 @@ when the sidebar reloads. To keep them, set `FONT_SCALE` and `TEXT_SIZES` near
 the top of `lcars.js`; uninstall then keeps your edited copy and says so, so
 delete it by hand afterwards.
 
+An agent can do this for you. Ask it to change lcars's text sizes following
+AGENTS.md, for example "make the workspace names bigger".
+
 ### Header
 
 The header shows the workspace count, then two readouts that appear only
