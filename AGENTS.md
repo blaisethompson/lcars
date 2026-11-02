@@ -61,7 +61,7 @@ re-running `install.sh --opencode` from a fresh clone puts it back.
 Ask the user whether they want the LCARS terminal theme: a black background,
 peach text and the sidebar's colours for the ANSI colours. Explain that it
 changes how every cmux terminal looks (light and dark), and that
-`cmux themes clear` switches back. Do not run it without a yes.
+uninstalling switches back. Do not run it without a yes.
 
 If they agree:
 
@@ -123,27 +123,41 @@ as in step 2 (the uninstaller needs the patch file to revert it), then:
 "$tmp/lcars/install.sh" --uninstall
 ```
 
-This removes `~/.config/cmux/sidebars/lcars.js` (or the symlink, in a
-development setup), reverts lcars's patch to cmux's OpenCode plugin so the
-plugin matches what cmux installed, and clears the OpenCode tab names lcars
-kept in workspace descriptions. Descriptions the user wrote are left alone.
-If the LCARS terminal theme is set, it also runs `cmux themes clear` (this
-resets both light and dark) and removes `~/.config/ghostty/themes/LCARS` unless
-the user edited it, and likewise resets OpenCode's, Claude Code's and Codex's
-theme if it is LCARS and removes their LCARS theme files; the output says which
-happened. cmux's own OpenCode integration stays installed.
+Install records what it changes in `~/.config/lcars/` (`install-state` plus
+`snapshots/`), outside the checkout, so a fresh clone works. Uninstall uses it
+to restore: cmux's previous light and dark themes, each agent's previous
+theme, backed-up theme files, the previous custom sidebar selection, and
+OpenCode's config files. A setting the user changed since the install is left
+alone. A theme file the user edited is kept, and the output says where the
+original is. It also removes `~/.config/cmux/sidebars/lcars.js` (or the
+symlink, in a development setup), reverts lcars's patch to cmux's OpenCode
+plugin, and clears the OpenCode tab names lcars kept in workspace descriptions
+(descriptions the user wrote are left alone). It never touches `cmux.json`.
+The output says what was restored, reset or kept.
 
-Ask the user whether they also want cmux's OpenCode integration removed (it
-reports OpenCode status to cmux's own sidebar too, and they may have had it
-before lcars). Only if they say yes:
+If there is no record (an older lcars version, or the files were removed), it
+prints a notice and resets themes to the defaults instead of previous values.
+
+One step is by hand: cmux has no command for going back to its built-in
+sidebar, so the output tells you what to pick. Pass it on: right-click the
+sidebar button and choose "Default Workspaces" (or another sidebar).
+
+OpenCode integration (cmux's own plugin): if the install record shows lcars
+brought it, plain `--uninstall` already removes it, with
+`cmux hooks opencode uninstall`. If it was there before lcars, or there is no
+record, it stays and only lcars's patch is reverted. Ask the user only in
+those cases, and the output says which applies: do they also want it removed
+(it reports OpenCode status to cmux's own sidebar)? Only if they say yes:
 
 ```sh
 "$tmp/lcars/install.sh" --uninstall --opencode
 ```
 
-This also runs `cmux hooks opencode uninstall` and deletes the two duplicate
-plugin files the installer moved to `~/.config/opencode/plugins-disabled/`.
+Duplicate plugin files the installer moved to
+`~/.config/opencode/plugins-disabled/` are not moved back, because OpenCode v2
+refuses to start with them ("Duplicate plugin ID: cmux.server"). If cmux's
+install upgraded a plugin that already existed, the upgrade stays.
 
-Then clean up as in step 8, and tell the user to pick another sidebar from the
-sidebar button's right-click menu and to restart OpenCode. Check that
+Then clean up as in step 8, and tell the user to do any by-hand step the
+output named, and to restart OpenCode if it was touched. Check that
 `cmux sidebar validate lcars` no longer finds lcars.

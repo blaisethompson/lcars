@@ -168,7 +168,7 @@ every cmux terminal looks, so it is off unless you ask for it:
 This copies `theme/LCARS` to `~/.config/ghostty/themes/LCARS` (backing up a
 different existing file) and runs `cmux themes set LCARS`, which applies it to
 both light and dark mode and reloads open terminals. To switch back, run
-`cmux themes clear`, or `./install.sh --uninstall`.
+`./install.sh --uninstall`, which restores your previous theme.
 
 A sidebar can't theme cmux's own tab bar. If you want cmux's highlights (the
 attention ring, the pane flash) in the same orange, set `app.accentColor` in
@@ -207,7 +207,7 @@ file. If OpenCode's or Claude Code's settings file has comments, it leaves the
 file alone and you pick LCARS from the agent's theme menu instead. Restart
 open agents to see it. To switch back,
 pick another theme with `/themes` (OpenCode) or `/theme` (Claude Code, Codex),
-or run `./install.sh --uninstall`.
+or run `./install.sh --uninstall`, which restores the previous theme.
 
 Antigravity (`agy`) doesn't load custom theme files; its default `colorScheme`
 (`"terminal"` in `~/.gemini/antigravity-cli/settings.json`, or **Color Scheme ›
@@ -223,17 +223,31 @@ From a clone of this repo:
 ./install.sh --uninstall
 ```
 
-This removes the sidebar, reverts the OpenCode plugin patch, and clears the
-OpenCode tab names kept in workspace descriptions (yours are left alone). If
-the LCARS terminal theme is set, it runs `cmux themes clear` (which resets both
-light and dark) and deletes `~/.config/ghostty/themes/LCARS` unless you have
-edited it. For each agent whose theme is LCARS, it removes that setting (back
-to the agent's default theme) and deletes the agent theme file unless you have
-edited it. It never touches `cmux.json`.
-Add `--opencode` to also remove cmux's OpenCode integration. Then choose
-another sidebar from the sidebar button's right-click menu and restart
-OpenCode. An agent can do this too: ask it to uninstall lcars following
-AGENTS.md.
+The installer notes what it changes in `~/.config/lcars/`, and uninstall uses
+that to put things back as they were: cmux's previous light and dark themes,
+each agent's previous theme, any theme files it backed up, your previous custom
+sidebar, and OpenCode's config files. Settings you changed since the install
+are left alone. A theme file you edited is kept, and the output says where the
+original is. The notes live outside the clone, so a fresh clone works. It
+also removes the sidebar, reverts the OpenCode plugin patch, and clears the
+OpenCode tab names kept in workspace descriptions (yours are left alone). It
+never touches `cmux.json`.
+
+cmux has no command for going back to its built-in sidebar, so that step is
+by hand. The output tells you what to pick: right-click the sidebar button and
+choose "Default Workspaces". Restart OpenCode afterwards.
+
+If OpenCode's integration was added by lcars, uninstall removes it. If it was
+already there, it stays and only lcars's patch is reverted. Add `--opencode`
+to remove it as well. Duplicate plugin files that the installer moved to
+`plugins-disabled/` are not moved back, because OpenCode v2 refuses to start
+with them ("Duplicate plugin ID: cmux.server"). If cmux's install upgraded the
+plugin, the upgrade stays.
+
+If there are no notes (lcars was installed by an older version, or the files
+were removed), uninstall resets themes to the defaults instead, and says so.
+
+An agent can do this too: ask it to uninstall lcars following AGENTS.md.
 
 ## Credits
 
