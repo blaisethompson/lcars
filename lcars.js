@@ -109,8 +109,8 @@ const ELBOW_RADIUS = 5;
 const FONT_SCALE = 1;
 const TEXT_SIZES = [
   { id: "header", label: "Header", size: 11 },
-  { id: "title", label: "Workspace Names", size: 15 },
-  { id: "compactTitle", label: "Workspace Names (List)", size: 13 },
+  { id: "title", label: "Workspace Names", size: 12 },
+  { id: "compactTitle", label: "Workspace Names (List)", size: 11 },
   { id: "badge", label: "Unread and Shortcut", size: 10 },
   { id: "compactBadge", label: "Unread and Shortcut (List)", size: 9 },
   { id: "details", label: "Folder and Branch", size: 11 },
