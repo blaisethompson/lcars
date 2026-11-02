@@ -1,0 +1,212 @@
+#!/usr/bin/env bash
+# Fake cmux for the lcars install/uninstall harness. Only works inside the
+# harness's fake HOME; refuses otherwise.
+set -u
+root="${LCARS_TEST_ROOT:-}"
+if [[ -z "$root" || "$HOME" != "$root"/* ]]; then
+  echo "cmux stub: refusing to run outside the test root (HOME=$HOME)" >&2
+  exit 99
+fi
+unpatched="${LCARS_TUI_UNPATCHED:?}"
+
+# Log every call; args containing spaces (or empty) are shown in double quotes.
+line="cmux"
+for a in "$@"; do
+  case "$a" in
+    ""|*[[:space:]]*) line="$line \"$a\"" ;;
+    *) line="$line $a" ;;
+  esac
+done
+echo "${line#cmux }" >> "$root/cmux.log"
+
+cfg="$HOME/Library/Application Support/com.cmuxterm.app/config.ghostty"
+sentinel="$root/ghostty-created-by-set"
+default_light="Apple System Colors Light"
+default_dark="Apple System Colors Dark"
+START="# cmux themes start"
+END="# cmux themes end"
+
+unexpected() { echo "UNEXPECTED $*" >> "$root/cmux.log"; echo "cmux stub: unexpected call: $*" >&2; exit 0; }
+usage_err() { echo "cmux stub: bad arguments: $*" >&2; exit 2; }
+
+has_block() { [[ -f "$cfg" ]] && grep -qx "$START" "$cfg" && grep -qx "$END" "$cfg"; }
+
+# Prints the value of "theme = ..." inside the block (may be empty).
+block_value() {
+  has_block || return 0
+  awk -v s="$START" -v e="$END" '
+    $0 == s { inb = 1; next }
+    $0 == e { inb = 0 }
+    inb && /^theme[[:space:]]*=/ { v = $0; sub(/^theme[[:space:]]*=[[:space:]]*/, "", v); print v; exit }' "$cfg"
+}
+
+# Sets globals L and D from a block value (any of the four accepted forms).
+parse_value() {
+  local v="$1" a b
+  L=""; D=""
+  if [[ "$v" =~ ^light:(.*),dark:(.*)$ ]]; then L="${BASH_REMATCH[1]}"; D="${BASH_REMATCH[2]}"
+  elif [[ "$v" =~ ^dark:(.*),light:(.*)$ ]]; then D="${BASH_REMATCH[1]}"; L="${BASH_REMATCH[2]}"
+  elif [[ "$v" =~ ^light:(.*)$ ]]; then L="${BASH_REMATCH[1]}"
+  elif [[ "$v" =~ ^dark:(.*)$ ]]; then D="${BASH_REMATCH[1]}"
+  elif [[ -n "$v" ]]; then L="$v"; D="$v"
+  fi
+}
+
+write_block() { # LIGHT DARK
+  local val="light:$1,dark:$2" tmp
+  tmp="$(mktemp "$root/cfg.XXXXXX")"
+  if has_block; then
+    awk -v s="$START" -v e="$END" -v val="theme = $val" '
+      $0 == s { print; inb = 1; done = 0; next }
+      $0 == e { if (!done) print val; inb = 0; print; next }
+      inb && /^theme[[:space:]]*=/ { if (!done) { print val; done = 1 } ; next }
+      { print }' "$cfg" > "$tmp"
+  else
+    if [[ ! -e "$cfg" ]]; then
+      mkdir -p "$(dirname "$cfg")"
+      : > "$sentinel"
+    fi
+    { [[ -f "$cfg" ]] && cat "$cfg"
+      if [[ -s "$cfg" ]]; then echo; fi
+      echo "$START"; echo "theme = $val"; echo "$END"; } > "$tmp"
+  fi
+  cat "$tmp" > "$cfg"; rm -f "$tmp"
+}
+
+themes_cmd() {
+  local sub="${1:-}"; shift || true
+  case "$sub" in
+    list)
+      local v; v="$(block_value)"; parse_value "$v"
+      echo "Current light: ${L:-$default_light}"
+      echo "Current dark: ${D:-$default_dark}"
+      echo "Config: $cfg"
+      echo "Source: $HOME/Library/Application Support/com.cmuxterm.app/themes"
+      echo
+      printf '%s\n' "$default_light" "$default_dark" "Catppuccin Latte" "Catppuccin Mocha" "LCARS"
+      ;;
+    set)
+      [[ $# -ge 1 ]] || usage_err themes set
+      local v nl nd light="" dark="" have_l=0 have_d=0 bare=""
+      v="$(block_value)"; parse_value "$v"; nl="${L:-$default_light}"; nd="${D:-$default_dark}"
+      while [[ $# -gt 0 ]]; do
+        case "$1" in
+          --light) [[ $# -ge 2 && -n "$2" ]] || usage_err "--light needs a value"; light="$2"; have_l=1; shift 2 ;;
+          --dark)  [[ $# -ge 2 && -n "$2" ]] || usage_err "--dark needs a value"; dark="$2"; have_d=1; shift 2 ;;
+          -*) usage_err "themes set $1" ;;
+          *) [[ -z "$bare" ]] || usage_err "two names"; bare="$1"; shift ;;
+        esac
+      done
+      if [[ -n "$bare" ]]; then
+        [[ $have_l -eq 0 && $have_d -eq 0 ]] || usage_err "name with --light/--dark"
+        write_block "$bare" "$bare"
+      else
+        [[ $have_l -eq 1 || $have_d -eq 1 ]] || usage_err "themes set needs a theme"
+        [[ $have_l -eq 1 ]] && nl="$light"
+        [[ $have_d -eq 1 ]] && nd="$dark"
+        write_block "$nl" "$nd"
+      fi
+      echo "Set theme"
+      ;;
+    clear)
+      if has_block; then
+        local tmp; tmp="$(mktemp "$root/cfg.XXXXXX")"
+        # drop the block and one blank line directly before it
+        awk -v s="$START" -v e="$END" '
+          { lines[NR] = $0 }
+          END {
+            for (i = 1; i <= NR; i++) {
+              if (lines[i] == s) {
+                if (n > 0 && out[n] == "") n--
+                while (i <= NR && lines[i] != e) i++
+                continue
+              }
+              out[++n] = lines[i]
+            }
+            for (i = 1; i <= n; i++) print out[i]
+          }' "$cfg" > "$tmp"
+        cat "$tmp" > "$cfg"; rm -f "$tmp"
+        if [[ -e "$sentinel" ]] && ! grep -q '[^[:space:]]' "$cfg"; then
+          rm -f "$cfg" "$sentinel"
+        fi
+      fi
+      echo "Cleared theme"
+      ;;
+    *) unexpected themes "$sub" "$@" ;;
+  esac
+}
+
+sidebar_cmd() {
+  local sub="${1:-}"; shift || true
+  case "$sub" in
+    validate) [[ "${1:-}" == lcars ]] || unexpected sidebar validate "$@"; exit 0 ;;
+    select)
+      local name="${1:-}"
+      [[ -n "$name" ]] || usage_err "sidebar select needs a name"
+      if ! ls "$HOME/.config/cmux/sidebars/$name".js >/dev/null 2>&1; then
+        echo "cmux stub: no sidebar named $name" >&2; exit 1
+      fi
+      mkdir -p "$HOME/.fake-prefs"
+      echo "cmux.sidebar.custom.$name" > "$HOME/.fake-prefs/sidebar"
+      ;;
+    *) unexpected sidebar "$sub" "$@" ;;
+  esac
+}
+
+# Rewrites opencode.json via the real osascript (it only touches the path given).
+oc_json() { # MODE FILE   MODE = add | remove
+  osascript -l JavaScript - "$1" "$2" <<'JS' >/dev/null 2>&1
+    function run(argv) {
+      const [mode, path] = argv;
+      const entry = "./plugins/cmux";
+      const fm = $.NSFileManager.defaultManager;
+      let exists = fm.fileExistsAtPath(path), cfg = {};
+      if (exists) cfg = JSON.parse($.NSString.stringWithContentsOfFileEncodingError(path, $.NSUTF8StringEncoding, null).js);
+      let before = JSON.stringify(cfg), list = Array.isArray(cfg.plugin) ? cfg.plugin : [];
+      if (mode === "add") {
+        if (list.indexOf(entry) >= 0) return "";
+        cfg.plugin = list.concat([entry]);
+      } else {
+        if (!exists) return "";
+        list = list.filter((x) => x !== entry);
+        if (list.length) cfg.plugin = list; else delete cfg.plugin;
+        if (Object.keys(cfg).length === 0) { fm.removeItemAtPathError(path, null); return ""; }
+      }
+      $(JSON.stringify(cfg, null, 2) + "\n").writeToFileAtomicallyEncodingError(path, true, $.NSUTF8StringEncoding, null);
+      return "";
+    }
+JS
+}
+
+hooks_cmd() {
+  [[ "${1:-}" == opencode && ( "${2:-}" == install || "${2:-}" == uninstall ) && "${3:-}" == "--yes" && $# -eq 3 ]] || unexpected hooks "$@"
+  local dir="${OPENCODE_CONFIG_DIR:?}" p
+  p="$dir/plugins"
+  if [[ "$2" == install ]]; then
+    mkdir -p "$p/cmux"
+    echo "cmux-opencode-tui-plugin-ownership-marker v2" > "$p/cmux/.cmux-owned"
+    echo '{"name":"cmux-opencode","type":"module"}' > "$p/cmux/package.json"
+    echo 'export const CMUXFeed = {};' > "$p/cmux/index.js"
+    [[ -e "$p/cmux/tui.js" ]] || cp "$unpatched" "$p/cmux/tui.js"
+    printf '%s\n' '// cmux-opencode-session-plugin-marker v1' 'export default {};' > "$p/cmux-session.js"
+    printf '%s\n' '// cmux-feed-plugin-marker v1' 'export default {};' > "$p/cmux-feed.js"
+    oc_json add "$dir/opencode.json"
+    echo "Installed cmux OpenCode integration"
+  else
+    rm -rf "$p/cmux"
+    rm -f "$p/cmux-session.js" "$p/cmux-feed.js"
+    oc_json remove "$dir/opencode.json"
+    rmdir "$p" 2>/dev/null || true
+    echo "Removed cmux OpenCode integration"
+  fi
+}
+
+case "${1:-}" in
+  themes) shift; themes_cmd "$@" ;;
+  sidebar) shift; sidebar_cmd "$@" ;;
+  hooks) shift; hooks_cmd "$@" ;;
+  rpc)
+    if [[ "${2:-}" == workspace.list ]]; then echo '{"workspaces":[]}'; else unexpected "$@"; fi ;;
+  workspace-action) exit 0 ;;
+  *) unexpected "$@" ;;
+esac

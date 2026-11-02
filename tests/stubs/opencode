@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Fake opencode: an empty success.
+exit 0

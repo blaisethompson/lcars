@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Fake defaults: only `read com.cmuxterm.app cmuxExtensionSidebarProviderId`.
+# Every write/delete (or anything else) is logged loudly and fails.
+set -u
+root="${LCARS_TEST_ROOT:-}"
+if [[ -z "$root" || "$HOME" != "$root"/* ]]; then
+  echo "defaults stub: refusing to run outside the test root (HOME=$HOME)" >&2
+  exit 99
+fi
+if [[ "${1:-}" == read && "${2:-}" == com.cmuxterm.app && "${3:-}" == cmuxExtensionSidebarProviderId && $# -eq 3 ]]; then
+  f="$HOME/.fake-prefs/sidebar"
+  [[ -f "$f" ]] || exit 1
+  cat "$f"
+  exit 0
+fi
+echo "FORBIDDEN defaults $*" >> "$root/defaults.log"
+echo "defaults stub: FORBIDDEN call: defaults $*" >&2
+exit 1
