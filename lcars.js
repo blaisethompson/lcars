@@ -479,28 +479,10 @@ function titleBar(w, size, height, trailing) {
     .frame({ width: 3 * cap, height });
   const pill = HStack({ spacing: 0 }, [
     Rectangle().fill("clear").frame({ width: 0, height }),
-    when(() => renaming() === w()?.id, "edit", () =>
-      TextField(() => w()?.title ?? "", {
-        placeholder: "Workspace name",
-        onSubmit: (nextTitle) => {
-          const title = (nextTitle ?? "").trim();
-          // The field starts from the current title, which may be cmux's
-          // automatic one; submitting it untouched must not freeze it as a
-          // custom name.
-          if (title && title === (w()?.title ?? "").trim()) setRenaming(null);
-          else if (title) cmux("workspace.action", { action: "rename", workspace_id: w().id, title });
-          else cmux("workspace.action", { action: "clear_name", workspace_id: w().id });
-          setRenaming(null);
-        },
-        onCancel: () => setRenaming(null),
-      }).font(size).weight("bold").monospaced()
-    ),
-    when(() => renaming() !== w()?.id, "title", () =>
-      Text(() => workspaceTitle(w()))
-        .font(size).weight("bold").monospaced()
-        .lineLimit(1).truncation("tail").marquee()
-        .color(() => (selected() ? inkOn(accent(w())) : tint(WHITE, ALPHA.strong)))
-    ),
+    Text(() => workspaceTitle(w()))
+      .font(size).weight("bold").monospaced()
+      .lineLimit(1).truncation("tail").marquee()
+      .color(() => (selected() ? inkOn(accent(w())) : tint(WHITE, ALPHA.strong))),
     Spacer({ minLength: 0 }),
     ...trailing,
   ])
@@ -610,6 +592,36 @@ function card(w) {
     .frame({ maxWidth: "infinity" })
     .onTap(() => cmux("workspace.select", { workspace_id: w().id }))
     .contextMenu(cardMenu(w));
+}
+
+// Renaming swaps the whole card for this row, as cmux's own workspace list
+// does. A field beside the title inside the title bar squeezed the title,
+// because anything in a ForEach there takes width the name needs.
+function renameRow(w) {
+  return HStack({ spacing: 6 }, [
+    RoundedRectangle({ cornerRadius: 2 })
+      .fill(() => accent(w()))
+      .frame({ width: 6, height: 26 }),
+    TextField(() => w()?.title ?? "", {
+      placeholder: "Workspace name",
+      onSubmit: (nextTitle) => {
+        const title = (nextTitle ?? "").trim();
+        // The field starts from the current title, which may be cmux's
+        // automatic one; submitting it untouched must not freeze it as a
+        // custom name.
+        if (title && title === (w()?.title ?? "").trim()) { /* unchanged */ }
+        else if (title) cmux("workspace.action", { action: "rename", workspace_id: w().id, title });
+        else cmux("workspace.action", { action: "clear_name", workspace_id: w().id });
+        setRenaming(null);
+      },
+      onCancel: () => setRenaming(null),
+    }).font(13).weight("bold").monospaced(),
+  ])
+    .paddingVertical(5)
+    .paddingHorizontal(6)
+    .cornerRadius(7)
+    .background(() => tint(accent(w()), ALPHA.wash))
+    .frame({ maxWidth: "infinity" });
 }
 
 function cardMenu(w) {
@@ -887,8 +899,9 @@ sidebar(() =>
         const id = item().id;
         const w = () => findWorkspace(id) ?? item();
         return VStack({ spacing: 0 }, [
-          when(() => !expanded(w()), "compact", () => compactCard(w)),
-          when(() => expanded(w()), "full", () => card(w)),
+          when(() => renaming() === id, "rename", () => renameRow(w)),
+          when(() => renaming() !== id && !expanded(w()), "compact", () => compactCard(w)),
+          when(() => renaming() !== id && expanded(w()), "full", () => card(w)),
         ]);
       }
     ),
