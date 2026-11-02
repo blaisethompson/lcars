@@ -127,7 +127,7 @@ label. "Everything bigger" means `FONT_SCALE`; a single kind means its `size`.
 Bars, icons and dots follow on their own, so don't change anything else.
 
 ```sh
-f=~/.config/cmux/sidebars/lcars.js
+f=$(realpath ~/.config/cmux/sidebars/lcars.js)            # keeps a symlink intact
 grep -n -A15 '^const FONT_SCALE' "$f"                     # current values
 sed -i '' 's/^const FONT_SCALE = .*/const FONT_SCALE = 1.2;/' "$f"
 sed -i '' '/id: "title"/s/size: [0-9.]*/size: 18/' "$f"

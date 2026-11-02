@@ -136,7 +136,9 @@ const [textSizes, setTextSizes] = signal(defaultSizes());
 // Views read this once, when they are built, and changing a size rebuilds
 // them all (see the end of this file), because not everything that depends on
 // it can be a live binding: the spacing that forms the pill ends, for one.
-const fontSize = (id, factor = 1) => textSizes()[id] * textScale() * factor;
+// Whole points only: at the default sizes, fractional title bar heights more
+// than doubled cmux's layout work on every workspace switch.
+const fontSize = (id, factor = 1) => Math.round(textSizes()[id] * textScale() * factor);
 
 // Height of the header blocks, and the radius of an LCARS pill end.
 const barHeight = () => fontSize("header", 20 / 11);
